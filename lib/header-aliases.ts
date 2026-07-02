@@ -1,6 +1,7 @@
 import type { ExcelShipmentRow } from "@/types/shipment";
 
-export type ExcelField = keyof ExcelShipmentRow;
+// Columns read from the spreadsheet; `office` is derived from deliverTo, not mapped.
+export type ExcelField = Exclude<keyof ExcelShipmentRow, "office">;
 
 /**
  * Known header name synonyms, compared after normalization
