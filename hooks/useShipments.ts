@@ -13,8 +13,11 @@ import type {
 
 export type LoadStatus = "idle" | "uploading" | "refreshing" | "ready" | "error";
 
+/** "NO_STATUS" groups UNAVAILABLE + UNKNOWN (lookup failed / unrecognized code). */
+export type StatusFilter = ShipmentStatus | "all" | "NO_STATUS";
+
 export interface ShipmentFilters {
-  status: ShipmentStatus | "all";
+  status: StatusFilter;
   city: string | "all";
   state: string | "all";
   carrier: string | "all";
@@ -36,6 +39,7 @@ export interface KpiCounts {
   outForDelivery: number;
   exception: number;
   labelCreated: number;
+  noStatus: number;
 }
 
 export interface DestinationCount {
@@ -147,6 +151,7 @@ export function useShipments() {
       outForDelivery: 0,
       exception: 0,
       labelCreated: 0,
+      noStatus: 0,
     };
     for (const s of shipments) {
       switch (s.tracking.status) {
@@ -167,6 +172,7 @@ export function useShipments() {
           break;
         case "UNAVAILABLE":
         case "UNKNOWN":
+          counts.noStatus += 1;
           break;
         default: {
           const exhaustive: never = s.tracking.status;
@@ -226,7 +232,11 @@ export function useShipments() {
   const filteredShipments = useMemo(() => {
     const query = debouncedSearch.trim().toLowerCase();
     return shipments.filter((s) => {
-      if (filters.status !== "all" && s.tracking.status !== filters.status) return false;
+      if (filters.status === "NO_STATUS") {
+        if (s.tracking.status !== "UNAVAILABLE" && s.tracking.status !== "UNKNOWN") return false;
+      } else if (filters.status !== "all" && s.tracking.status !== filters.status) {
+        return false;
+      }
       if (filters.city !== "all" && s.city.trim() !== filters.city) return false;
       if (filters.state !== "all" && s.state.trim() !== filters.state) return false;
       if (filters.carrier !== "all" && s.carrier.trim() !== filters.carrier) return false;

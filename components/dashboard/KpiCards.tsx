@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  HelpCircle,
   Package,
   Tag,
   Truck,
@@ -11,19 +12,18 @@ import {
 
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { KpiCounts } from "@/hooks/useShipments";
-import type { ShipmentStatus } from "@/types/shipment";
+import type { KpiCounts, StatusFilter } from "@/hooks/useShipments";
 
 interface KpiCardsProps {
   kpis: KpiCounts;
-  activeStatus: ShipmentStatus | "all";
-  onSelectStatus: (status: ShipmentStatus | "all") => void;
+  activeStatus: StatusFilter;
+  onSelectStatus: (status: StatusFilter) => void;
 }
 
 interface KpiDefinition {
   label: string;
   value: (k: KpiCounts) => number;
-  status: ShipmentStatus | "all";
+  status: StatusFilter;
   icon: typeof Package;
   iconClass: string;
 }
@@ -35,11 +35,12 @@ const KPI_DEFINITIONS: KpiDefinition[] = [
   { label: "Out for Delivery", value: (k) => k.outForDelivery, status: "OUT_FOR_DELIVERY", icon: Warehouse, iconClass: "text-blue-600 bg-blue-50" },
   { label: "Exception", value: (k) => k.exception, status: "EXCEPTION", icon: AlertTriangle, iconClass: "text-red-600 bg-red-50" },
   { label: "Label Created", value: (k) => k.labelCreated, status: "LABEL_CREATED", icon: Tag, iconClass: "text-slate-500 bg-slate-100" },
+  { label: "No Status", value: (k) => k.noStatus, status: "NO_STATUS", icon: HelpCircle, iconClass: "text-slate-500 bg-slate-100" },
 ];
 
 export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-7">
       {KPI_DEFINITIONS.map((def) => {
         const Icon = def.icon;
         const isActive = activeStatus === def.status;
