@@ -24,9 +24,20 @@ need to recreate it:
 | `FEDEX_CLIENT_ID` | FedEx API key (project credentials from developer.fedex.com) |
 | `FEDEX_CLIENT_SECRET` | FedEx secret key |
 | `FEDEX_API_BASE_URL` | `https://apis.fedex.com` for production, `https://apis-sandbox.fedex.com` for test credentials |
+| `DASHBOARD_USERNAME` | Shared username for the HTTP Basic Auth gate (see below). Optional locally. |
+| `DASHBOARD_PASSWORD` | Shared password for the HTTP Basic Auth gate. Optional locally. |
 
 Credentials are only used server-side (Next.js API routes); they are never sent to
 the browser.
+
+### Access control
+
+Uploaded spreadsheets contain personal data (names, addresses), so the deployed
+app is gated behind a shared HTTP Basic Auth login (`proxy.ts`) whenever
+`DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` are set. If they're unset (e.g. local
+dev), the app is open. This is a lightweight stopgap for short-term internal use —
+for anything longer-lived, prefer Vercel's built-in deployment protection or
+company SSO instead.
 
 ## Spreadsheet format
 
