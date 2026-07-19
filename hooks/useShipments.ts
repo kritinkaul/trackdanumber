@@ -247,6 +247,7 @@ export function useShipments() {
         s.city.toLowerCase().includes(query) ||
         s.state.toLowerCase().includes(query) ||
         s.deliverTo.toLowerCase().includes(query) ||
+        s.recipient.toLowerCase().includes(query) ||
         (s.office?.toLowerCase().includes(query) ?? false)
       );
     });

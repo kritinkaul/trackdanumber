@@ -41,6 +41,35 @@ function toScanEvents(result: FedExTrackResult): ScanEvent[] {
   return events.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
+/** Pulls a return tracking number out of free-text carrier messages, if present. */
+function extractReturnTracking(candidates: (string | null | undefined)[]): string | null {
+  const re = /return\s+tracking\s+(?:number|no\.?|#)?\s*:?\s*([0-9](?:[0-9\s]{7,}[0-9]))/i;
+  for (const text of candidates) {
+    if (!text) continue;
+    const match = text.match(re);
+    if (match) return match[1].replace(/\s+/g, "");
+  }
+  return null;
+}
+
+/** Detects language indicating the package is heading back to the shipper. */
+function detectReturnToShipper(candidates: (string | null | undefined)[]): boolean {
+  return candidates.some(
+    (text) => !!text && /return(?:ing|ed)?\s+to\s+(?:shipper|sender|origin)/i.test(text)
+  );
+}
+
+/** Removes a "Return tracking number ####" sentence so it isn't shown twice. */
+function stripReturnTrackingSentence(text: string): string {
+  return text
+    .replace(/return\s+tracking\s+(?:number|no\.?|#)?\s*:?\s*[0-9][0-9\s]{7,}[0-9]/i, "")
+    // Collapse punctuation/space left behind (e.g. "exception. . Being" → "exception. Being").
+    .replace(/([.,;:])\s*(?=[.,;:])/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s.,;:]+|[\s,;:]+$/g, "")
+    .trim();
+}
+
 export function unavailableTracking(errorMessage: string): TrackingInfo {
   return {
     status: "UNAVAILABLE",
@@ -51,6 +80,8 @@ export function unavailableTracking(errorMessage: string): TrackingInfo {
     lastScanTime: null,
     serviceType: null,
     deliveryException: null,
+    isReturnToShipper: false,
+    returnTrackingNumber: null,
     errorMessage,
   };
 }
@@ -74,13 +105,32 @@ export function normalizeTrackResult(result: FedExTrackResult): TrackingInfo {
     (d) => d.reasonDescription || d.actionDescription
   );
   const exceptionScan = transitHistory.find((e) => e.isException);
-  const deliveryException =
+  const rawException =
     status === "EXCEPTION"
       ? exceptionDetail?.reasonDescription ??
         exceptionScan?.description ??
         latest?.description ??
         "Delivery exception reported."
       : null;
+
+  // Return info can live in the exception text, ancillary details, or scan events.
+  const returnCandidates = [
+    rawException,
+    exceptionDetail?.actionDescription,
+    exceptionDetail?.reasonDescription,
+    latest?.description,
+    ...transitHistory.map((e) => e.description),
+  ];
+  const returnTrackingNumber = extractReturnTracking(returnCandidates);
+  const isReturnToShipper =
+    returnTrackingNumber !== null || detectReturnToShipper(returnCandidates);
+
+  // Avoid repeating the return tracking number inside the exception message.
+  let deliveryException = rawException;
+  if (deliveryException && returnTrackingNumber) {
+    const stripped = stripReturnTrackingSentence(deliveryException);
+    deliveryException = stripped.length > 0 ? stripped : null;
+  }
 
   return {
     status,
@@ -91,6 +141,8 @@ export function normalizeTrackResult(result: FedExTrackResult): TrackingInfo {
     lastScanTime: transitHistory[0]?.timestamp ?? null,
     serviceType: result.serviceDetail?.description ?? result.serviceDetail?.type ?? null,
     deliveryException,
+    isReturnToShipper,
+    returnTrackingNumber,
     ...(transitHistory.length > 0 ? { transitHistory } : {}),
   };
 }

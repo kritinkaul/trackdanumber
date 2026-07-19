@@ -56,9 +56,9 @@ export function UploadDropzone({ onFileSelected, isUploading }: UploadDropzonePr
           if (!isUploading) handleFile(e.dataTransfer.files[0]);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border bg-card px-6 py-12 text-center transition-colors",
-          isDragging && "border-primary bg-primary/5",
-          isUploading && "cursor-default opacity-70"
+          "flex min-h-72 cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-primary/25 bg-primary/[0.025] px-6 py-12 text-center transition-all hover:border-primary/55 hover:bg-primary/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          isDragging && "scale-[1.01] border-primary bg-primary/8 shadow-lg",
+          isUploading && "cursor-default border-primary/20 opacity-80"
         )}
       >
         <input
@@ -73,23 +73,27 @@ export function UploadDropzone({ onFileSelected, isUploading }: UploadDropzonePr
         />
         {isUploading ? (
           <>
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+            <div className="relative flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <span className="absolute inset-0 animate-ping rounded-2xl border border-primary/20" />
+              <Loader2 className="size-6 animate-spin" />
+            </div>
             <div>
-              <p className="font-medium">Processing shipments…</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Reading the spreadsheet and fetching live FedEx status for every tracking number.
+              <p className="font-semibold">Building your operations view…</p>
+              <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
+                Validating the manifest and requesting live carrier status. Large files can take a
+                few minutes.
               </p>
             </div>
           </>
         ) : (
           <>
-            <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-              <UploadCloud className="size-6 text-muted-foreground" />
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <UploadCloud className="size-6" />
             </div>
             <div>
-              <p className="font-medium">Drop your daily shipment file here</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                or click to browse — .xlsx and .csv are supported
+              <p className="font-semibold">Drop the daily shipment file here</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Excel and CSV files are supported
               </p>
             </div>
             <Button variant="outline" size="sm" className="pointer-events-none mt-1">

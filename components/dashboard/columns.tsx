@@ -1,9 +1,10 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, MapPin, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/common/CopyButton";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import type { Shipment } from "@/types/shipment";
@@ -26,6 +27,7 @@ function SortableHeader({
       size="sm"
       className="-ml-2 h-8 px-2 font-medium"
       onClick={() => column.toggleSorting(sorted === "asc")}
+      aria-label={`Sort by ${label}${sorted ? `, currently ${sorted === "asc" ? "ascending" : "descending"}` : ""}`}
     >
       {label}
       <Icon className="size-3.5 text-muted-foreground" />
@@ -42,41 +44,60 @@ export const shipmentColumns: ColumnDef<Shipment>[] = [
     accessorKey: "trackingNumber",
     header: ({ column }) => <SortableHeader label="Tracking Number" column={column} />,
     cell: ({ row }) => (
-      <span className="font-mono text-xs">{row.original.trackingNumber}</span>
+      <span className="flex items-center gap-1">
+        <span className="font-mono text-xs">{row.original.trackingNumber}</span>
+        <CopyButton
+          value={row.original.trackingNumber}
+          label="Copy tracking number"
+          className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+        />
+      </span>
     ),
   },
   {
-    accessorKey: "deliverTo",
-    header: ({ column }) => <SortableHeader label="Deliver To" column={column} />,
-    cell: ({ row }) => muted(row.original.deliverTo),
-  },
-  {
-    accessorKey: "city",
-    header: ({ column }) => <SortableHeader label="City" column={column} />,
-    cell: ({ row }) => muted(row.original.city),
-  },
-  {
-    accessorKey: "state",
-    header: ({ column }) => <SortableHeader label="State" column={column} />,
-    cell: ({ row }) => muted(row.original.state),
+    id: "recipient",
+    accessorFn: (row) => row.recipient || row.deliverTo,
+    header: ({ column }) => <SortableHeader label="Recipient & destination" column={column} />,
+    cell: ({ row }) => {
+      const shipment = row.original;
+      const recipient = shipment.recipient || shipment.deliverTo;
+      const destination = [shipment.city, shipment.state].filter(Boolean).join(", ");
+
+      return (
+        <div className="max-w-[260px]">
+          <p className="truncate font-medium">{muted(recipient)}</p>
+          <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+            <MapPin className="size-3 shrink-0" />
+            {shipment.office?.replace(/^A&M\s*-\s*/i, "") || destination || "Destination unavailable"}
+          </p>
+        </div>
+      );
+    },
   },
   {
     id: "status",
     accessorFn: (row) => row.tracking.status,
     header: ({ column }) => <SortableHeader label="Live Status" column={column} />,
-    cell: ({ row }) => <StatusBadge status={row.original.tracking.status} />,
+    cell: ({ row }) => (
+      <span className="flex items-center gap-1.5">
+        <StatusBadge status={row.original.tracking.status} />
+        {row.original.tracking.isReturnToShipper && (
+          <span
+            title="Returning to shipper"
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+          >
+            <Undo2 className="size-3" />
+            Return
+          </span>
+        )}
+      </span>
+    ),
   },
   {
     id: "currentLocation",
     accessorFn: (row) => row.tracking.currentLocation ?? "",
     header: ({ column }) => <SortableHeader label="Current Location" column={column} />,
     cell: ({ row }) => muted(row.original.tracking.currentLocation),
-  },
-  {
-    id: "origin",
-    accessorFn: (row) => row.tracking.origin ?? "",
-    header: ({ column }) => <SortableHeader label="Origin" column={column} />,
-    cell: ({ row }) => muted(row.original.tracking.origin),
   },
   {
     id: "eta",
@@ -99,7 +120,7 @@ export const shipmentColumns: ColumnDef<Shipment>[] = [
   {
     id: "serviceType",
     accessorFn: (row) => row.tracking.serviceType ?? "",
-    header: ({ column }) => <SortableHeader label="Service Type" column={column} />,
+    header: ({ column }) => <SortableHeader label="Service" column={column} />,
     cell: ({ row }) => muted(row.original.tracking.serviceType),
   },
 ];

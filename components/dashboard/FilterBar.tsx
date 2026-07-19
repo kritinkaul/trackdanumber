@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { Search, X } from "lucide-react";
+import { ChevronDown, Download, Search, SlidersHorizontal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,10 @@ interface FilterBarProps {
   filters: ShipmentFilters;
   onFilterChange: <K extends keyof ShipmentFilters>(key: K, value: ShipmentFilters[K]) => void;
   options: FilterOptions;
+  /** Exports the currently filtered rows as a CSV download. */
+  onExport: () => void;
+  /** Number of rows the export would contain (0 disables the button). */
+  exportCount: number;
 }
 
 interface FilterFormValues {
@@ -46,6 +51,8 @@ export function FilterBar({
   filters,
   onFilterChange,
   options,
+  onExport,
+  exportCount,
 }: FilterBarProps) {
   // `values` keeps the form in sync when filters change externally
   // (KPI card clicks, destination chips, reset after upload).
@@ -60,6 +67,15 @@ export function FilterBar({
     filters.state !== "all" ||
     filters.carrier !== "all" ||
     filters.office !== "all";
+
+  const activeFilterCount = [
+    filters.status !== "all",
+    filters.city !== "all",
+    filters.state !== "all",
+    filters.carrier !== "all",
+    filters.office !== "all",
+  ].filter(Boolean).length;
+  const [showFilters, setShowFilters] = useState(false);
 
   const clearAll = () => {
     onSearchChange("");
@@ -108,57 +124,120 @@ export function FilterBar({
   ];
 
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <div className="relative flex-1">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search tracking number, city, state, or recipient…"
-          className="bg-card pl-9"
-          aria-label="Search shipments"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {selectConfigs.map((config) => (
-          <Controller
-            key={config.name}
-            control={control}
-            name={config.name}
-            render={({ field }) => (
-              <Select
-                value={field.value}
-                onValueChange={(value) => {
-                  field.onChange(value);
-                  config.onChange(value);
-                }}
-              >
-                <SelectTrigger className="w-[130px] bg-card" aria-label={config.placeholder}>
-                  <SelectValue placeholder={config.placeholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    {config.placeholder === "Status" ? "All Statuses" :
-                     config.placeholder === "Office" ? "All Offices" :
-                     `All ${config.placeholder}s`}
-                  </SelectItem>
-                  {config.items.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+    <div className="border-b">
+      <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search tracking, recipient, office, city, or state"
+            className="h-10 bg-background pl-9"
+            aria-label="Search shipments"
           />
-        ))}
-        {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={clearAll}>
-            <X className="size-4" />
-            Clear
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant={showFilters || activeFilterCount > 0 ? "secondary" : "outline"}
+            size="lg"
+            onClick={() => setShowFilters((visible) => !visible)}
+            aria-expanded={showFilters}
+            aria-controls="shipment-advanced-filters"
+            className="flex-1 sm:flex-none"
+          >
+            <SlidersHorizontal className="size-4" />
+            Filters
+            {activeFilterCount > 0 ? (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">
+                {activeFilterCount}
+              </span>
+            ) : null}
+            <ChevronDown
+              className={`size-3.5 transition-transform ${showFilters ? "rotate-180" : ""}`}
+            />
           </Button>
-        )}
+          <Button
+            size="lg"
+            onClick={onExport}
+            disabled={exportCount === 0}
+            title={
+              exportCount === 0
+                ? "No shipments to export"
+                : `Export ${exportCount} shipment${exportCount === 1 ? "" : "s"} as CSV`
+            }
+            className="flex-1 sm:flex-none"
+          >
+            <Download className="size-4" />
+            Export CSV
+            <span className="rounded-full bg-primary-foreground/15 px-1.5 text-xs tabular-nums">
+              {exportCount}
+            </span>
+          </Button>
+        </div>
       </div>
+
+      {showFilters ? (
+        <div
+          id="shipment-advanced-filters"
+          className="flex flex-wrap items-end gap-3 border-t bg-muted/25 px-4 py-3"
+        >
+          {selectConfigs.map((config) => (
+            <div key={config.name} className="min-w-[140px] flex-1 sm:flex-none">
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                {config.placeholder}
+              </label>
+              <Controller
+                control={control}
+                name={config.name}
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      config.onChange(value);
+                    }}
+                  >
+                    <SelectTrigger className="w-full bg-background sm:w-[156px]">
+                      <SelectValue placeholder={config.placeholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        {config.placeholder === "Status"
+                          ? "All Statuses"
+                          : config.placeholder === "Office"
+                            ? "All Offices"
+                            : `All ${config.placeholder}s`}
+                      </SelectItem>
+                      {config.items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          ))}
+          {hasActiveFilters ? (
+            <Button variant="ghost" size="sm" onClick={clearAll} className="mb-0.5">
+              <X className="size-4" />
+              Clear all
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!showFilters && hasActiveFilters ? (
+        <div className="flex items-center gap-2 border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
+          <span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span>
+          <span aria-hidden>·</span>
+          <button type="button" onClick={clearAll} className="font-medium text-foreground hover:underline">
+            Clear all
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -59,14 +60,27 @@ export function ShipmentTable({ shipments, onRowClick }: ShipmentTableProps) {
   const lastRow = Math.min((pageIndex + 1) * pageSize, totalRows);
 
   return (
-    <Card className="overflow-hidden rounded-xl py-0">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
+    <Card className="surface-panel overflow-hidden rounded-none border-0 py-0 shadow-none ring-0">
+      <Table>
+        <TableCaption className="sr-only">
+          Shipment tracking results. Select a row to inspect its full tracking history and asset
+          details.
+        </TableCaption>
+        <TableHeader className="bg-muted/55">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-nowrap">
+                  <TableHead
+                    key={header.id}
+                    aria-sort={
+                      header.column.getIsSorted() === "asc"
+                        ? "ascending"
+                        : header.column.getIsSorted() === "desc"
+                          ? "descending"
+                          : "none"
+                    }
+                    className="sticky top-0 z-10 h-11 bg-muted/95 px-4 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur"
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(header.column.columnDef.header, header.getContext())}
@@ -74,8 +88,8 @@ export function ShipmentTable({ shipments, onRowClick }: ShipmentTableProps) {
                 ))}
               </TableRow>
             ))}
-          </TableHeader>
-          <TableBody>
+        </TableHeader>
+        <TableBody>
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
                 <TableCell
@@ -90,22 +104,32 @@ export function ShipmentTable({ shipments, onRowClick }: ShipmentTableProps) {
                 <TableRow
                   key={row.id}
                   onClick={() => onRowClick(row.original)}
-                  className="cursor-pointer"
+                  onKeyDown={(event) => {
+                    if (
+                      event.target === event.currentTarget &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      onRowClick(row.original);
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-label={`Open shipment ${row.original.trackingNumber}`}
+                  className="group/row cursor-pointer border-border/70 outline-none hover:bg-accent/35 focus-visible:bg-accent/45 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="whitespace-nowrap">
+                    <TableCell key={cell.id} className="h-16 px-4">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             )}
-          </TableBody>
-        </Table>
-      </div>
+        </TableBody>
+      </Table>
 
-      <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col gap-3 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground" aria-live="polite">
           Showing <span className="tabular-nums">{firstRow}–{lastRow}</span> of{" "}
           <span className="tabular-nums">{totalRows}</span> shipments
         </p>

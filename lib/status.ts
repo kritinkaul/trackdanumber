@@ -39,13 +39,14 @@ export const STATUS_LABELS: Record<ShipmentStatus, string> = {
 
 /** Tailwind classes for the status badge in tables/cards. */
 export const STATUS_BADGE_CLASSES: Record<ShipmentStatus, string> = {
-  DELIVERED: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  OUT_FOR_DELIVERY: "bg-blue-50 text-blue-700 border-blue-200",
-  IN_TRANSIT: "bg-amber-50 text-amber-700 border-amber-200",
-  EXCEPTION: "bg-red-50 text-red-700 border-red-200",
-  LABEL_CREATED: "bg-slate-100 text-slate-600 border-slate-200",
-  UNAVAILABLE: "bg-slate-100 text-slate-500 border-slate-200",
-  UNKNOWN: "bg-slate-100 text-slate-500 border-slate-200",
+  DELIVERED:
+    "bg-emerald-500/10 text-emerald-700 border-emerald-500/25 dark:text-emerald-300",
+  OUT_FOR_DELIVERY: "bg-blue-500/10 text-blue-700 border-blue-500/25 dark:text-blue-300",
+  IN_TRANSIT: "bg-amber-500/12 text-amber-800 border-amber-500/25 dark:text-amber-300",
+  EXCEPTION: "bg-red-500/10 text-red-700 border-red-500/25 dark:text-red-300",
+  LABEL_CREATED: "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:text-slate-300",
+  UNAVAILABLE: "bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400",
+  UNKNOWN: "bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400",
 };
 
 export const ALL_STATUSES: ShipmentStatus[] = [

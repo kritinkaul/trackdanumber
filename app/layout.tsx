@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,9 +14,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Shipment Dashboard",
-  description: "Internal FedEx shipment tracking dashboard",
+  title: "Shipment Control Center | Alvarez & Marsal",
+  description: "Live shipment operations and office delivery coordination",
 };
+
+const themeInitScript = `
+  try {
+    const saved = localStorage.getItem("shipment-dashboard-theme");
+    const theme = saved === "light" || saved === "dark"
+      ? saved
+      : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.style.colorScheme = theme;
+  } catch {}
+`;
 
 export default function RootLayout({
   children,
@@ -26,8 +38,16 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <Script
+          id="shipment-theme-init"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

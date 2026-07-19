@@ -11,13 +11,19 @@ interface RefreshButtonProps {
 
 export function RefreshButton({ onRefresh, isRefreshing }: RefreshButtonProps) {
   return (
-    <Button variant="outline" onClick={onRefresh} disabled={isRefreshing}>
+    <Button
+      variant="outline"
+      onClick={onRefresh}
+      disabled={isRefreshing}
+      aria-label={isRefreshing ? "Refreshing shipment status" : "Refresh shipment status"}
+      className="bg-card/80"
+    >
       {isRefreshing ? (
         <Loader2 className="size-4 animate-spin" />
       ) : (
         <RefreshCw className="size-4" />
       )}
-      {isRefreshing ? "Refreshing…" : "Refresh Status"}
+      <span className="hidden sm:inline">{isRefreshing ? "Refreshing…" : "Refresh Status"}</span>
     </Button>
   );
 }

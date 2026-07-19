@@ -5,6 +5,7 @@ import {
   FIELD_LABELS,
   HEADER_ALIASES,
   REQUIRED_FIELD,
+  SILENT_OPTIONAL_FIELDS,
 } from "@/lib/header-aliases";
 import type { ExcelShipmentRow } from "@/types/shipment";
 
@@ -109,7 +110,7 @@ export function parseSpreadsheet(buffer: ArrayBuffer): ParsedSpreadsheet {
 
   const warnings: string[] = [];
   for (const field of Object.keys(HEADER_ALIASES) as ExcelField[]) {
-    if (field !== REQUIRED_FIELD && !mapping[field]) {
+    if (field !== REQUIRED_FIELD && !SILENT_OPTIONAL_FIELDS.has(field) && !mapping[field]) {
       warnings.push(`Column "${FIELD_LABELS[field]}" was not found; those values will be blank.`);
     }
   }
@@ -138,6 +139,9 @@ export function parseSpreadsheet(buffer: ArrayBuffer): ParsedSpreadsheet {
       state: get("state"),
       address: get("address"),
       carrier: get("carrier"),
+      serialNumber: get("serialNumber"),
+      assetName: get("assetName"),
+      recipient: get("recipient"),
     });
   });
 

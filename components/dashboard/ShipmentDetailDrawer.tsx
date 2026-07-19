@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Laptop, Undo2 } from "lucide-react";
 
+import { CopyButton } from "@/components/common/CopyButton";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -36,12 +37,16 @@ export function ShipmentDetailDrawer({ shipment, onClose }: ShipmentDetailDrawer
 
   return (
     <Sheet open={shipment !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent className="w-full overflow-y-auto bg-card sm:max-w-lg">
         {shipment && tracking && (
           <>
             <SheetHeader>
-              <SheetTitle className="font-mono text-base">
+              <SheetTitle className="flex items-center gap-1.5 font-mono text-base">
                 {shipment.trackingNumber}
+                <CopyButton
+                  value={shipment.trackingNumber}
+                  label="Copy tracking number"
+                />
               </SheetTitle>
               <SheetDescription className="flex items-center gap-2">
                 <StatusBadge status={tracking.status} />
@@ -50,8 +55,34 @@ export function ShipmentDetailDrawer({ shipment, onClose }: ShipmentDetailDrawer
             </SheetHeader>
 
             <div className="space-y-5 px-4 pb-6">
+              {tracking.isReturnToShipper && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  <Undo2 className="mt-0.5 size-4 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">Returning to shipper</p>
+                    {tracking.returnTrackingNumber ? (
+                      <div className="mt-1">
+                        <p className="text-xs text-amber-800/80 dark:text-amber-300/80">Return tracking number</p>
+                        <span className="flex items-center gap-1 font-mono text-sm">
+                          {tracking.returnTrackingNumber}
+                          <CopyButton
+                            value={tracking.returnTrackingNumber}
+                            label="Copy return tracking number"
+                            className="text-amber-800 hover:text-amber-950 dark:text-amber-300 dark:hover:text-amber-100"
+                          />
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+                        This package is being routed back to the sender.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {tracking.deliveryException && (
-                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                <div className="flex items-start gap-2 rounded-xl border border-red-300/70 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   <div>
                     <p className="font-medium">Delivery Exception</p>
@@ -61,13 +92,16 @@ export function ShipmentDetailDrawer({ shipment, onClose }: ShipmentDetailDrawer
               )}
 
               {tracking.errorMessage && (
-                <div className="rounded-lg border bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+                <div className="rounded-xl border bg-muted px-3 py-2.5 text-sm text-muted-foreground">
                   {tracking.errorMessage}
                 </div>
               )}
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
                 <DetailField label="Deliver To" value={shipment.deliverTo} />
+                {shipment.recipient && (
+                  <DetailField label="Recipient" value={shipment.recipient} />
+                )}
                 <DetailField label="Carrier" value={shipment.carrier} />
                 <DetailField label="Origin" value={tracking.origin} />
                 <DetailField label="Destination" value={destination} />
@@ -82,6 +116,32 @@ export function ShipmentDetailDrawer({ shipment, onClose }: ShipmentDetailDrawer
                   value={tracking.lastScanTime ? formatDateTime(tracking.lastScanTime) : null}
                 />
               </dl>
+
+              {(shipment.assetName || shipment.serialNumber) && (
+                <div className="rounded-xl border bg-muted/40 px-3 py-3">
+                  <h3 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Laptop className="size-3.5" />
+                    Asset Details
+                  </h3>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3">
+                    <DetailField label="Asset Name" value={shipment.assetName} />
+                    <DetailField
+                      label="Serial Number"
+                      value={
+                        shipment.serialNumber ? (
+                          <span className="flex items-center gap-1 font-mono text-xs">
+                            {shipment.serialNumber}
+                            <CopyButton
+                              value={shipment.serialNumber}
+                              label="Copy serial number"
+                            />
+                          </span>
+                        ) : null
+                      }
+                    />
+                  </dl>
+                </div>
+              )}
 
               {tracking.transitHistory && tracking.transitHistory.length > 0 && (
                 <>
