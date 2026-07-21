@@ -27,7 +27,7 @@ export function ThemeToggle() {
       }}
       aria-label="Toggle color theme"
       title="Toggle color theme"
-      className="rounded-full bg-card/80"
+      className="rounded-full bg-card"
     >
       <Moon className="size-4 dark:hidden" />
       <Sun className="hidden size-4 dark:block" />

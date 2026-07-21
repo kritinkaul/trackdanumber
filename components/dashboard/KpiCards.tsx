@@ -1,14 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   CircleDashed,
   Package,
   Truck,
+  Undo2,
   Warehouse,
 } from "lucide-react";
 
+import { AnimatedNumber } from "@/components/common/AnimatedNumber";
 import { cn } from "@/lib/utils";
 import type { KpiCounts, StatusFilter } from "@/hooks/useShipments";
 
@@ -61,6 +64,14 @@ const KPI_DEFINITIONS: KpiDefinition[] = [
     accent: "text-amber-700 bg-amber-500/12 dark:text-amber-300",
   },
   {
+    label: "Returns",
+    helper: "Heading back to shipper",
+    value: (k) => k.returning,
+    status: "RETURN_TO_SHIPPER",
+    icon: Undo2,
+    accent: "text-violet-700 bg-violet-500/10 dark:text-violet-300",
+  },
+  {
     label: "Delivered",
     helper: "Completed",
     value: (k) => k.delivered,
@@ -74,6 +85,14 @@ export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) 
   const known = Math.max(kpis.total - kpis.noStatus, 0);
   const completion = known > 0 ? Math.round((kpis.delivered / known) * 100) : 0;
 
+  const [barWidth, setBarWidth] = useState(0);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setBarWidth(completion));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [completion]);
+
   return (
     <section aria-labelledby="network-overview-title" className="surface-panel overflow-hidden rounded-2xl">
       <div className="flex flex-col gap-2 border-b px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
@@ -83,13 +102,21 @@ export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) 
             Today&apos;s shipment flow
           </h2>
         </div>
-        <p className="text-sm text-muted-foreground">
-          <span className="font-semibold tabular-nums text-foreground">{completion}%</span>{" "}
-          delivered across shipments with live status
-        </p>
+        <div className="w-full max-w-56 sm:w-56">
+          <p className="text-sm text-muted-foreground">
+            <AnimatedNumber value={completion} suffix="%" className="font-semibold text-foreground" />{" "}
+            delivered
+          </p>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
+              style={{ width: `${barWidth}%` }}
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-5">
+      <div className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0 xl:grid-cols-6">
         {KPI_DEFINITIONS.map((definition) => {
           const Icon = definition.icon;
           const isActive = activeStatus === definition.status;
@@ -104,18 +131,20 @@ export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) 
                 onSelectStatus(isActive && definition.status !== "all" ? "all" : definition.status)
               }
               className={cn(
-                "group relative flex min-h-32 items-start justify-between gap-3 p-5 text-left transition-colors hover:bg-muted/55 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "group relative flex min-h-32 items-start justify-between gap-3 p-5 text-left transition-all duration-200 hover:z-10 hover:-translate-y-0.5 hover:rounded-xl hover:bg-muted/55 hover:shadow-lg focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 isActive && "bg-accent/70"
               )}
             >
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{definition.label}</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
+                <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">
+                  <AnimatedNumber value={value} />
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">{definition.helper}</p>
               </div>
               <div
                 className={cn(
-                  "flex size-9 shrink-0 items-center justify-center rounded-xl",
+                  "flex size-9 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-110",
                   definition.accent
                 )}
               >
@@ -138,7 +167,7 @@ export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) 
             onClick={() => onSelectStatus("LABEL_CREATED")}
             className="font-semibold text-foreground underline-offset-4 hover:underline"
           >
-            {kpis.labelCreated}
+            <AnimatedNumber value={kpis.labelCreated} />
           </button>
         </span>
         <span aria-hidden className="size-1 rounded-full bg-border" />
@@ -149,7 +178,7 @@ export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) 
             onClick={() => onSelectStatus("NO_STATUS")}
             className="font-semibold text-foreground underline-offset-4 hover:underline"
           >
-            {kpis.noStatus}
+            <AnimatedNumber value={kpis.noStatus} />
           </button>
         </span>
       </div>

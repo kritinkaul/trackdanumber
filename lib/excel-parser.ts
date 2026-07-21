@@ -24,6 +24,12 @@ function normalizeHeader(header: string): string {
     .trim();
 }
 
+// Aliases shorter than this are exact-match only. A short token like "st" is a
+// legitimate abbreviation for "state", but as a *prefix* it also matches
+// unrelated headers such as "Status" or "Street" — so it can't be trusted to
+// mean "starts with" without risking a wrong column getting claimed first.
+const MIN_PREFIX_ALIAS_LENGTH = 4;
+
 function matchHeaders(headers: string[]): Partial<Record<ExcelField, string>> {
   const mapping: Partial<Record<ExcelField, string>> = {};
   const claimed = new Set<string>();
@@ -37,7 +43,9 @@ function matchHeaders(headers: string[]): Partial<Record<ExcelField, string>> {
     const prefix = headers.find(
       (h) =>
         !claimed.has(h) &&
-        aliases.some((a) => normalizeHeader(h).startsWith(a))
+        aliases.some(
+          (a) => a.length >= MIN_PREFIX_ALIAS_LENGTH && normalizeHeader(h).startsWith(a)
+        )
     );
     const match = exact ?? prefix;
     if (match) {

@@ -53,8 +53,12 @@ function slug(value: string): string {
 /** e.g. "shipments-out-for-delivery-am-houston-tx-2026-07-09.csv" */
 export function buildExportFilename(filters: ShipmentFilters): string {
   const parts = ["shipments"];
-  if (filters.status !== "all") {
-    parts.push(slug(filters.status === "NO_STATUS" ? "no-status" : STATUS_LABELS[filters.status]));
+  if (filters.status === "NO_STATUS") {
+    parts.push(slug("no-status"));
+  } else if (filters.status === "RETURN_TO_SHIPPER") {
+    parts.push(slug("returning"));
+  } else if (filters.status !== "all") {
+    parts.push(slug(STATUS_LABELS[filters.status]));
   }
   if (filters.office !== "all") parts.push(slug(filters.office));
   if (filters.city !== "all") parts.push(slug(filters.city));

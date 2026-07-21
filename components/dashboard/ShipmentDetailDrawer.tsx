@@ -49,32 +49,43 @@ export function ShipmentDetailDrawer({ shipment, onClose }: ShipmentDetailDrawer
                 />
               </SheetTitle>
               <SheetDescription className="flex items-center gap-2">
-                <StatusBadge status={tracking.status} />
+                <StatusBadge status={tracking.status} isReturnToShipper={tracking.isReturnToShipper} />
                 <span>{tracking.statusDescription}</span>
               </SheetDescription>
             </SheetHeader>
 
             <div className="space-y-5 px-4 pb-6">
               {tracking.isReturnToShipper && (
-                <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                <div
+                  className={cn(
+                    "flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-sm",
+                    tracking.status === "DELIVERED"
+                      ? "border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200"
+                      : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                  )}
+                >
                   <Undo2 className="mt-0.5 size-4 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium">Returning to shipper</p>
+                    <p className="font-medium">
+                      {tracking.status === "DELIVERED" ? "Returned to shipper" : "Returning to shipper"}
+                    </p>
                     {tracking.returnTrackingNumber ? (
                       <div className="mt-1">
-                        <p className="text-xs text-amber-800/80 dark:text-amber-300/80">Return tracking number</p>
+                        <p className="text-xs opacity-80">Return tracking number</p>
                         <span className="flex items-center gap-1 font-mono text-sm">
                           {tracking.returnTrackingNumber}
                           <CopyButton
                             value={tracking.returnTrackingNumber}
                             label="Copy return tracking number"
-                            className="text-amber-800 hover:text-amber-950 dark:text-amber-300 dark:hover:text-amber-100"
+                            className="opacity-90 hover:opacity-100"
                           />
                         </span>
                       </div>
                     ) : (
-                      <p className="mt-0.5 text-amber-800 dark:text-amber-300">
-                        This package is being routed back to the sender.
+                      <p className="mt-0.5 opacity-90">
+                        {tracking.status === "DELIVERED"
+                          ? "This package was delivered back to the sender."
+                          : "This package is being routed back to the sender."}
                       </p>
                     )}
                   </div>

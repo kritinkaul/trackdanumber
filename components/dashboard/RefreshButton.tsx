@@ -16,7 +16,7 @@ export function RefreshButton({ onRefresh, isRefreshing }: RefreshButtonProps) {
       onClick={onRefresh}
       disabled={isRefreshing}
       aria-label={isRefreshing ? "Refreshing shipment status" : "Refresh shipment status"}
-      className="bg-card/80"
+      className="bg-card"
     >
       {isRefreshing ? (
         <Loader2 className="size-4 animate-spin" />

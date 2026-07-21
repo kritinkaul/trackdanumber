@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, MapPin, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/common/CopyButton";
@@ -79,18 +79,10 @@ export const shipmentColumns: ColumnDef<Shipment>[] = [
     accessorFn: (row) => row.tracking.status,
     header: ({ column }) => <SortableHeader label="Live Status" column={column} />,
     cell: ({ row }) => (
-      <span className="flex items-center gap-1.5">
-        <StatusBadge status={row.original.tracking.status} />
-        {row.original.tracking.isReturnToShipper && (
-          <span
-            title="Returning to shipper"
-            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-          >
-            <Undo2 className="size-3" />
-            Return
-          </span>
-        )}
-      </span>
+      <StatusBadge
+        status={row.original.tracking.status}
+        isReturnToShipper={row.original.tracking.isReturnToShipper}
+      />
     ),
   },
   {

@@ -33,7 +33,7 @@ function toScanEvents(result: FedExTrackResult): ScanEvent[] {
     .filter((e) => e.date)
     .map((e) => ({
       timestamp: e.date as string,
-      description: e.eventDescription ?? e.derivedStatus ?? "Scan event",
+      description: e.eventDescription ?? e.exceptionDescription ?? e.derivedStatus ?? "Scan event",
       location: formatLocation(e.scanLocation) ?? "—",
       eventType: e.eventType ?? "",
       isException: Boolean(e.exceptionCode || e.exceptionDescription),
@@ -52,11 +52,20 @@ function extractReturnTracking(candidates: (string | null | undefined)[]): strin
   return null;
 }
 
-/** Detects language indicating the package is heading back to the shipper. */
+/**
+ * Detects language indicating the package is heading back to the shipper.
+ * Allows a few words between "return[ing/ed]" and "to" (e.g. FedEx's own
+ * "Returning package to shipper" scan text) instead of requiring them to be
+ * directly adjacent.
+ *
+ * Deliberately excludes "origin" as a destination — that word is also used
+ * for ordinary routing scans (e.g. "returned to origin facility for
+ * consolidation"), which would falsely flag a normal in-transit package as
+ * heading back to the shipper. "Shipper"/"sender" are unambiguous.
+ */
 function detectReturnToShipper(candidates: (string | null | undefined)[]): boolean {
-  return candidates.some(
-    (text) => !!text && /return(?:ing|ed)?\s+to\s+(?:shipper|sender|origin)/i.test(text)
-  );
+  const re = /return(?:ing|ed)?(?:\s+\S+){0,3}\s+to\s+(?:the\s+)?(?:shipper|sender)/i;
+  return candidates.some((text) => !!text && re.test(text));
 }
 
 /** Removes a "Return tracking number ####" sentence so it isn't shown twice. */
@@ -122,8 +131,23 @@ export function normalizeTrackResult(result: FedExTrackResult): TrackingInfo {
     ...transitHistory.map((e) => e.description),
   ];
   const returnTrackingNumber = extractReturnTracking(returnCandidates);
+
+  // A return tracking number is a fact that stays true regardless of when it
+  // appeared, so it's fine to search the whole history for it. But whether the
+  // package is *currently* returning is a present-tense question — searching
+  // the whole history for return language means a resolved/superseded scan
+  // (e.g. an exception that got corrected and later delivered normally) can
+  // permanently mislabel the shipment. Only the most current signals — the
+  // latest status detail and the single most recent scan — should decide that.
+  const currentStateCandidates = [
+    rawException,
+    exceptionDetail?.actionDescription,
+    exceptionDetail?.reasonDescription,
+    latest?.description,
+    transitHistory[0]?.description,
+  ];
   const isReturnToShipper =
-    returnTrackingNumber !== null || detectReturnToShipper(returnCandidates);
+    returnTrackingNumber !== null || detectReturnToShipper(currentStateCandidates);
 
   // Avoid repeating the return tracking number inside the exception message.
   let deliveryException = rawException;

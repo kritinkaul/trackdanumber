@@ -14,7 +14,7 @@ import type {
 export type LoadStatus = "idle" | "uploading" | "refreshing" | "ready" | "error";
 
 /** "NO_STATUS" groups UNAVAILABLE + UNKNOWN (lookup failed / unrecognized code). */
-export type StatusFilter = ShipmentStatus | "all" | "NO_STATUS";
+export type StatusFilter = ShipmentStatus | "all" | "NO_STATUS" | "RETURN_TO_SHIPPER";
 
 export interface ShipmentFilters {
   status: StatusFilter;
@@ -40,6 +40,8 @@ export interface KpiCounts {
   exception: number;
   labelCreated: number;
   noStatus: number;
+  /** Anywhere in the return flow — heading back or already returned to the shipper. */
+  returning: number;
 }
 
 export interface DestinationCount {
@@ -51,6 +53,10 @@ export interface OfficeCount {
   office: string;
   count: number;
 }
+
+export type ActionResult =
+  | { ok: true; count: number }
+  | { ok: false; message: string };
 
 async function readError(response: Response): Promise<string> {
   try {
@@ -71,7 +77,7 @@ export function useShipments() {
 
   const debouncedSearch = useDebouncedValue(search);
 
-  const upload = useCallback(async (file: File) => {
+  const upload = useCallback(async (file: File): Promise<ActionResult> => {
     setStatus("uploading");
     setError(null);
     setWarnings([]);
@@ -80,9 +86,10 @@ export function useShipments() {
       formData.append("file", file);
       const response = await fetch("/api/upload", { method: "POST", body: formData });
       if (!response.ok) {
-        setError(await readError(response));
+        const message = await readError(response);
+        setError(message);
         setStatus("error");
-        return;
+        return { ok: false, message };
       }
       const body: UploadResponse = await response.json();
       setShipments(body.shipments);
@@ -90,14 +97,17 @@ export function useShipments() {
       setFilters(DEFAULT_FILTERS);
       setSearch("");
       setStatus("ready");
+      return { ok: true, count: body.shipments.length };
     } catch {
-      setError("Upload failed. Check your connection and try again.");
+      const message = "Upload failed. Check your connection and try again.";
+      setError(message);
       setStatus("error");
+      return { ok: false, message };
     }
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (shipments.length === 0) return;
+  const refresh = useCallback(async (): Promise<ActionResult> => {
+    if (shipments.length === 0) return { ok: false, message: "No shipments to refresh." };
     setStatus("refreshing");
     setError(null);
     try {
@@ -108,9 +118,10 @@ export function useShipments() {
         body: JSON.stringify({ trackingNumbers }),
       });
       if (!response.ok) {
-        setError(await readError(response));
+        const message = await readError(response);
+        setError(message);
         setStatus("ready");
-        return;
+        return { ok: false, message };
       }
       const body: RefreshResponse = await response.json();
       setShipments((prev) =>
@@ -121,9 +132,12 @@ export function useShipments() {
         )
       );
       setStatus("ready");
+      return { ok: true, count: trackingNumbers.length };
     } catch {
-      setError("Refresh failed. Check your connection and try again.");
+      const message = "Refresh failed. Check your connection and try again.";
+      setError(message);
       setStatus("ready");
+      return { ok: false, message };
     }
   }, [shipments]);
 
@@ -152,11 +166,15 @@ export function useShipments() {
       exception: 0,
       labelCreated: 0,
       noStatus: 0,
+      returning: 0,
     };
     for (const s of shipments) {
+      if (s.tracking.isReturnToShipper) counts.returning += 1;
       switch (s.tracking.status) {
         case "DELIVERED":
-          counts.delivered += 1;
+          // A return that has completed still reports status DELIVERED — keep it
+          // out of the "genuine delivery" bucket so the count isn't misleading.
+          if (!s.tracking.isReturnToShipper) counts.delivered += 1;
           break;
         case "IN_TRANSIT":
           counts.inTransit += 1;
@@ -234,6 +252,13 @@ export function useShipments() {
     return shipments.filter((s) => {
       if (filters.status === "NO_STATUS") {
         if (s.tracking.status !== "UNAVAILABLE" && s.tracking.status !== "UNKNOWN") return false;
+      } else if (filters.status === "RETURN_TO_SHIPPER") {
+        if (!s.tracking.isReturnToShipper) return false;
+      } else if (filters.status === "DELIVERED") {
+        // Keep in sync with the `kpis.delivered` count: a completed return also
+        // reports DELIVERED, but it never reached the original recipient, so it
+        // shouldn't appear when filtering for genuine deliveries.
+        if (s.tracking.status !== "DELIVERED" || s.tracking.isReturnToShipper) return false;
       } else if (filters.status !== "all" && s.tracking.status !== filters.status) {
         return false;
       }

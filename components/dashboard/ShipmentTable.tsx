@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -58,6 +58,15 @@ export function ShipmentTable({ shipments, onRowClick }: ShipmentTableProps) {
   const totalRows = shipments.length;
   const firstRow = totalRows === 0 ? 0 : pageIndex * pageSize + 1;
   const lastRow = Math.min((pageIndex + 1) * pageSize, totalRows);
+  const sortKey = sorting.map((s) => `${s.id}:${s.desc}`).join(",");
+
+  // Pagination is otherwise uncontrolled, so filtering/searching down to fewer
+  // results while on page 2+ would leave `pageIndex` pointing past the end —
+  // rendering an empty "no shipments match" page even though matches exist.
+  useEffect(() => {
+    const maxIndex = Math.max(table.getPageCount() - 1, 0);
+    if (pageIndex > maxIndex) table.setPageIndex(maxIndex);
+  }, [shipments, pageSize, pageIndex, table]);
 
   return (
     <Card className="surface-panel overflow-hidden rounded-none border-0 py-0 shadow-none ring-0">
@@ -79,7 +88,7 @@ export function ShipmentTable({ shipments, onRowClick }: ShipmentTableProps) {
                           ? "descending"
                           : "none"
                     }
-                    className="sticky top-0 z-10 h-11 bg-muted/95 px-4 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur"
+                    className="sticky top-0 z-10 h-11 bg-muted px-4 text-xs uppercase tracking-wide text-muted-foreground"
                   >
                     {header.isPlaceholder
                       ? null
@@ -100,9 +109,9 @@ export function ShipmentTable({ shipments, onRowClick }: ShipmentTableProps) {
                 </TableCell>
               </TableRow>
             ) : (
-              table.getRowModel().rows.map((row) => (
+              table.getRowModel().rows.map((row, index) => (
                 <TableRow
-                  key={row.id}
+                  key={`${row.id}-${sortKey}`}
                   onClick={() => onRowClick(row.original)}
                   onKeyDown={(event) => {
                     if (
@@ -115,7 +124,8 @@ export function ShipmentTable({ shipments, onRowClick }: ShipmentTableProps) {
                   }}
                   tabIndex={0}
                   aria-label={`Open shipment ${row.original.trackingNumber}`}
-                  className="group/row cursor-pointer border-border/70 outline-none hover:bg-accent/35 focus-visible:bg-accent/45 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  style={{ animationDelay: `${Math.min(index * 15, 300)}ms` }}
+                  className="group/row relative cursor-pointer border-border/70 outline-none animate-in fade-in-0 slide-in-from-top-1 fill-mode-both duration-300 ease-out transition-shadow hover:z-10 hover:bg-accent/35 hover:shadow-[0_1px_10px_oklch(0.12_0.02_250_/_8%)] focus-visible:bg-accent/45 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="h-16 px-4">

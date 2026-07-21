@@ -5,9 +5,11 @@ import Image from "next/image";
 import { Activity, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { AnimatedNumber } from "@/components/common/AnimatedNumber";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
 import { DashboardSkeleton } from "@/components/common/TableSkeleton";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
+import { useToast } from "@/components/common/Toast";
 import { DestinationSummary } from "@/components/dashboard/DestinationSummary";
 import { OfficeDeliveryBoard } from "@/components/dashboard/OfficeDeliveryBoard";
 import { FilterBar } from "@/components/dashboard/FilterBar";
@@ -40,9 +42,41 @@ export default function DashboardPage() {
   } = useShipments();
 
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+  const { toast } = useToast();
 
   const hasData = shipments.length > 0;
   const showUpload = !hasData && status !== "uploading";
+
+  const handleUpload = async (file: File) => {
+    const result = await upload(file);
+    if (result.ok) {
+      toast({
+        title: `Loaded ${result.count.toLocaleString()} shipment${result.count === 1 ? "" : "s"}`,
+        description: "Manifest imported and live status is now tracking.",
+        variant: "success",
+      });
+    }
+  };
+
+  const handleRefresh = async () => {
+    const result = await refresh();
+    if (result.ok) {
+      toast({
+        title: "Status refreshed",
+        description: `Latest carrier status pulled for ${result.count.toLocaleString()} shipment${result.count === 1 ? "" : "s"}.`,
+        variant: "success",
+      });
+    }
+  };
+
+  const handleExport = (targetShipments: Shipment[], exportFilters = filters) => {
+    downloadShipmentsCsv(targetShipments, exportFilters);
+    toast({
+      title: `Exported ${targetShipments.length.toLocaleString()} shipment${targetShipments.length === 1 ? "" : "s"}`,
+      description: "Your CSV download has started.",
+      variant: "success",
+    });
+  };
 
   return (
     <div className="relative min-h-screen">
@@ -69,7 +103,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             {hasData ? (
               <>
-              <RefreshButton onRefresh={refresh} isRefreshing={status === "refreshing"} />
+              <RefreshButton onRefresh={handleRefresh} isRefreshing={status === "refreshing"} />
               <Button variant="ghost" onClick={reset} className="hidden sm:inline-flex">
                 <Upload className="size-4" />
                 New upload
@@ -102,7 +136,7 @@ export default function DashboardPage() {
         {showUpload && (
           <section className="grid min-h-[calc(100vh-11rem)] items-center gap-10 py-8 lg:grid-cols-[0.9fr_1.1fr] lg:py-12">
             <div className="max-w-xl">
-              <div className="mb-7 inline-flex items-center gap-2 rounded-full border bg-card/70 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+              <div className="mb-7 inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
                 <span className="relative flex size-2">
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                   <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
@@ -111,7 +145,7 @@ export default function DashboardPage() {
               </div>
               <p className="eyebrow">Daily operations workspace</p>
               <h1 className="mt-3 max-w-lg text-4xl font-semibold leading-[1.05] tracking-[-0.04em] sm:text-5xl">
-                From manifest to handoff, in one clear view.
+                Track every shipment in one place.
               </h1>
               <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
                 Upload the daily shipment report to surface exceptions, coordinate office
@@ -151,7 +185,7 @@ export default function DashboardPage() {
                 </div>
                 <FileSpreadsheet className="size-5 text-muted-foreground" />
               </div>
-              <UploadDropzone onFileSelected={upload} isUploading={false} />
+              <UploadDropzone onFileSelected={handleUpload} isUploading={false} />
               <p className="mt-3 px-1 text-xs leading-5 text-muted-foreground">
                 Tracking numbers are matched by header name. No manual column mapping is
                 required.
@@ -163,7 +197,7 @@ export default function DashboardPage() {
         {status === "uploading" && (
           <div className="space-y-7 py-6">
             <div className="mx-auto max-w-3xl">
-              <UploadDropzone onFileSelected={upload} isUploading />
+              <UploadDropzone onFileSelected={handleUpload} isUploading />
             </div>
             <DashboardSkeleton />
           </div>
@@ -173,7 +207,7 @@ export default function DashboardPage() {
           <>
             <section className="flex flex-col gap-4 pb-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border bg-card/70 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground">
                   <span className="size-1.5 rounded-full bg-emerald-500" />
                   Live manifest
                 </div>
@@ -188,8 +222,11 @@ export default function DashboardPage() {
               <div className="text-left sm:text-right">
                 <p className="eyebrow">Current scope</p>
                 <p className="mt-1 text-sm">
-                  <span className="font-semibold tabular-nums">{filteredShipments.length}</span>
-                  <span className="text-muted-foreground"> of {shipments.length} shipments</span>
+                  <AnimatedNumber value={filteredShipments.length} className="font-semibold" />
+                  <span className="text-muted-foreground">
+                    {" "}
+                    of <AnimatedNumber value={shipments.length} /> shipments
+                  </span>
                 </p>
               </div>
             </section>
@@ -201,7 +238,7 @@ export default function DashboardPage() {
             />
 
             <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
-              <OfficeDeliveryBoard shipments={shipments} />
+              <OfficeDeliveryBoard shipments={shipments} onSelectShipment={setSelectedShipment} />
               <DestinationSummary
                 destinations={destinations}
                 activeCity={filters.city}
@@ -227,7 +264,7 @@ export default function DashboardPage() {
                 filters={filters}
                 onFilterChange={setFilter}
                 options={filterOptions}
-                onExport={() => downloadShipmentsCsv(filteredShipments, filters)}
+                onExport={() => handleExport(filteredShipments)}
                 exportCount={filteredShipments.length}
               />
               <ShipmentTable shipments={filteredShipments} onRowClick={setSelectedShipment} />
