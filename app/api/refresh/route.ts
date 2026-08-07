@@ -5,7 +5,9 @@ import { trackShipments } from "@/services/fedex/tracking";
 import type { RefreshResponse, TrackingInfo } from "@/types/shipment";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// Return-tracker refreshes can carry ~1,000+ labels at single-number
+// concurrency, so allow the full Fluid Compute window.
+export const maxDuration = 300;
 
 export async function POST(request: Request): Promise<NextResponse> {
   let trackingNumbers: string[];

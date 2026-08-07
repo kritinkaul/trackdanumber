@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
+import { CheckCircle2, FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,11 +9,13 @@ import { cn } from "@/lib/utils";
 interface UploadDropzoneProps {
   onFileSelected: (file: File) => void;
   isUploading: boolean;
+  /** True for a brief window right after a successful import — shows a checkmark pop. */
+  justSucceeded?: boolean;
 }
 
 const ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 
-export function UploadDropzone({ onFileSelected, isUploading }: UploadDropzoneProps) {
+export function UploadDropzone({ onFileSelected, isUploading, justSucceeded }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [rejected, setRejected] = useState<string | null>(null);
@@ -38,27 +40,27 @@ export function UploadDropzone({ onFileSelected, isUploading }: UploadDropzonePr
         role="button"
         tabIndex={0}
         aria-label="Upload shipment spreadsheet"
-        onClick={() => !isUploading && inputRef.current?.click()}
+        onClick={() => !isUploading && !justSucceeded && inputRef.current?.click()}
         onKeyDown={(e) => {
-          if ((e.key === "Enter" || e.key === " ") && !isUploading) {
+          if ((e.key === "Enter" || e.key === " ") && !isUploading && !justSucceeded) {
             e.preventDefault();
             inputRef.current?.click();
           }
         }}
         onDragOver={(e) => {
           e.preventDefault();
-          if (!isUploading) setIsDragging(true);
+          if (!isUploading && !justSucceeded) setIsDragging(true);
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={(e) => {
           e.preventDefault();
           setIsDragging(false);
-          if (!isUploading) handleFile(e.dataTransfer.files[0]);
+          if (!isUploading && !justSucceeded) handleFile(e.dataTransfer.files[0]);
         }}
         className={cn(
           "flex min-h-72 cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-primary/25 bg-primary/[0.025] px-6 py-12 text-center transition-all hover:border-primary/55 hover:bg-primary/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           isDragging && "scale-[1.01] border-primary bg-primary/8 shadow-lg",
-          isUploading && "cursor-default border-primary/20 opacity-80"
+          (isUploading || justSucceeded) && "cursor-default border-primary/20 opacity-80"
         )}
       >
         <input
@@ -71,7 +73,19 @@ export function UploadDropzone({ onFileSelected, isUploading }: UploadDropzonePr
             e.target.value = "";
           }}
         />
-        {isUploading ? (
+        {justSucceeded ? (
+          <>
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="size-6 animate-pop-in" />
+            </div>
+            <div>
+              <p className="font-semibold">Manifest imported</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Loading your operations view…
+              </p>
+            </div>
+          </>
+        ) : isUploading ? (
           <>
             <div className="relative flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <span className="absolute inset-0 animate-ping rounded-2xl border border-primary/20" />
@@ -91,7 +105,7 @@ export function UploadDropzone({ onFileSelected, isUploading }: UploadDropzonePr
               <UploadCloud className="size-6" />
             </div>
             <div>
-              <p className="font-semibold">Drop the daily shipment file here</p>
+              <p className="font-semibold">Drop the daily shipment or Zero Tracker file here</p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 Excel and CSV files are supported
               </p>

@@ -73,7 +73,7 @@ export function parseOffice(deliverTo: string): string | null {
   return `A&M - ${location}`;
 }
 
-function cellToString(value: unknown): string {
+export function cellToString(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "number") {
     // Long tracking numbers can arrive as numbers; avoid scientific notation.
@@ -82,18 +82,25 @@ function cellToString(value: unknown): string {
   return String(value).trim();
 }
 
+/** Reads an uploaded buffer into a workbook, normalizing read failures. */
+export function readWorkbook(buffer: ArrayBuffer): XLSX.WorkBook {
+  try {
+    return XLSX.read(buffer, { type: "array" });
+  } catch {
+    throw new ExcelParseError("Could not read the file. Please upload a valid .xlsx or .csv file.");
+  }
+}
+
 /**
  * Parses an uploaded .xlsx/.csv buffer into shipment rows using
  * header-name detection (no manual column mapping).
  */
 export function parseSpreadsheet(buffer: ArrayBuffer): ParsedSpreadsheet {
-  let workbook: XLSX.WorkBook;
-  try {
-    workbook = XLSX.read(buffer, { type: "array" });
-  } catch {
-    throw new ExcelParseError("Could not read the file. Please upload a valid .xlsx or .csv file.");
-  }
+  return parseSpreadsheetWorkbook(readWorkbook(buffer));
+}
 
+/** Same as parseSpreadsheet, for callers that already read the workbook. */
+export function parseSpreadsheetWorkbook(workbook: XLSX.WorkBook): ParsedSpreadsheet {
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
     throw new ExcelParseError("The uploaded file contains no sheets.");

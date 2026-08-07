@@ -17,10 +17,25 @@ import { KpiCards } from "@/components/dashboard/KpiCards";
 import { RefreshButton } from "@/components/dashboard/RefreshButton";
 import { ShipmentDetailDrawer } from "@/components/dashboard/ShipmentDetailDrawer";
 import { ShipmentTable } from "@/components/dashboard/ShipmentTable";
+import { ReturnsDashboard } from "@/components/returns/ReturnsDashboard";
 import { UploadDropzone } from "@/components/upload/UploadDropzone";
 import { downloadShipmentsCsv } from "@/lib/export";
+import { useReturnTracker } from "@/hooks/useReturnTracker";
 import { useShipments } from "@/hooks/useShipments";
 import type { Shipment } from "@/types/shipment";
+
+const CAPABILITIES = [
+  {
+    icon: Activity,
+    title: "Live carrier status",
+    description: "Track movement, ETAs, and exceptions.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Coordinator-ready exports",
+    description: "Share filtered recipient lists in seconds.",
+  },
+];
 
 export default function DashboardPage() {
   const {
@@ -41,15 +56,31 @@ export default function DashboardPage() {
     reset,
   } = useShipments();
 
+  const returnTracker = useReturnTracker();
+
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+  const [justUploaded, setJustUploaded] = useState(false);
   const { toast } = useToast();
 
   const hasData = shipments.length > 0;
-  const showUpload = !hasData && status !== "uploading";
+  const hasReturns = returnTracker.assets.length > 0;
+  const showUpload = (!hasData && !hasReturns && status !== "uploading") || justUploaded;
 
   const handleUpload = async (file: File) => {
     const result = await upload(file);
     if (result.ok) {
+      if (result.returns) {
+        // The server recognized a Zero Touch Return Tracker workbook.
+        returnTracker.load(result.returns);
+        toast({
+          title: `Loaded ${result.count.toLocaleString()} return asset${result.count === 1 ? "" : "s"}`,
+          description: "Return tracker detected — live carrier status pulled for every label.",
+          variant: "success",
+        });
+        return;
+      }
+      setJustUploaded(true);
+      window.setTimeout(() => setJustUploaded(false), 700);
       toast({
         title: `Loaded ${result.count.toLocaleString()} shipment${result.count === 1 ? "" : "s"}`,
         description: "Manifest imported and live status is now tracking.",
@@ -67,6 +98,22 @@ export default function DashboardPage() {
         variant: "success",
       });
     }
+  };
+
+  const handleReturnsRefresh = async () => {
+    const result = await returnTracker.refresh();
+    if (result.ok) {
+      toast({
+        title: "Status refreshed",
+        description: `Latest carrier status pulled for ${result.count.toLocaleString()} label${result.count === 1 ? "" : "s"}.`,
+        variant: "success",
+      });
+    }
+  };
+
+  const handleReset = () => {
+    reset();
+    returnTracker.reset();
   };
 
   const handleExport = (targetShipments: Shipment[], exportFilters = filters) => {
@@ -100,16 +147,20 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {hasData ? (
+          <div className="flex items-center gap-3">
+            {hasData || hasReturns ? (
               <>
-              <RefreshButton onRefresh={handleRefresh} isRefreshing={status === "refreshing"} />
-              <Button variant="ghost" onClick={reset} className="hidden sm:inline-flex">
-                <Upload className="size-4" />
-                New upload
-              </Button>
+                <RefreshButton
+                  onRefresh={hasReturns ? handleReturnsRefresh : handleRefresh}
+                  isRefreshing={hasReturns ? returnTracker.isRefreshing : status === "refreshing"}
+                />
+                <Button variant="ghost" onClick={handleReset} className="hidden sm:inline-flex">
+                  <Upload className="size-4" />
+                  New upload
+                </Button>
               </>
             ) : null}
+            <span aria-hidden className="hidden h-6 w-px bg-border md:block" />
             <ThemeToggle />
           </div>
         </div>
@@ -122,11 +173,14 @@ export default function DashboardPage() {
             onRetry={status === "error" && !hasData ? undefined : refresh}
           />
         )}
+        {returnTracker.error && (
+          <ErrorBanner message={returnTracker.error} onRetry={returnTracker.refresh} />
+        )}
 
-        {warnings.length > 0 && (
+        {(warnings.length > 0 || returnTracker.warnings.length > 0) && (
           <div className="rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
             <ul className="list-inside list-disc space-y-0.5">
-              {warnings.map((warning) => (
+              {[...warnings, ...returnTracker.warnings].map((warning) => (
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
@@ -152,28 +206,17 @@ export default function DashboardPage() {
                 deliveries, and give every recipient a reliable status.
               </p>
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <div className="flex gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Activity className="size-4" />
+                {CAPABILITIES.map(({ icon: Icon, title, description }) => (
+                  <div key={title} className="flex gap-3">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Icon className="size-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{title}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Live carrier status</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Track movement, ETAs, and exceptions.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <ShieldCheck className="size-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Coordinator-ready exports</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Share filtered recipient lists in seconds.
-                    </p>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
@@ -185,7 +228,11 @@ export default function DashboardPage() {
                 </div>
                 <FileSpreadsheet className="size-5 text-muted-foreground" />
               </div>
-              <UploadDropzone onFileSelected={handleUpload} isUploading={false} />
+              <UploadDropzone
+                onFileSelected={handleUpload}
+                isUploading={false}
+                justSucceeded={justUploaded}
+              />
               <p className="mt-3 px-1 text-xs leading-5 text-muted-foreground">
                 Tracking numbers are matched by header name. No manual column mapping is
                 required.
@@ -203,7 +250,13 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {hasData && (
+        {hasReturns && !justUploaded && (
+          <div className="space-y-6">
+            <ReturnsDashboard tracker={returnTracker} />
+          </div>
+        )}
+
+        {hasData && !justUploaded && (
           <>
             <section className="flex flex-col gap-4 pb-1 sm:flex-row sm:items-end sm:justify-between">
               <div>

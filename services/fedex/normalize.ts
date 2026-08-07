@@ -1,9 +1,28 @@
 import { mapFedExStatusCode, STATUS_LABELS } from "@/lib/status";
-import type { ScanEvent, TrackingInfo } from "@/types/shipment";
+import type { ScanEvent, ShipmentStatus, TrackingInfo } from "@/types/shipment";
 import type {
+  FedExLatestStatusDetail,
   FedExScanLocation,
   FedExTrackResult,
 } from "@/services/fedex/types";
+
+/**
+ * FedEx's `code` is the shipment's authoritative top-level classification —
+ * when FedEx itself flags an exception there (e.g. "SE" / "Shipment
+ * exception"), that's a real source of truth and should win. `derivedCode` is
+ * a finer-grained sub-status (e.g. "DO" for "dropped off") that's usually
+ * more specific and useful for everything else, but when it isn't in our
+ * lookup table it can silently swallow a real exception `code` already told
+ * us about. Only fall through to `derivedCode` once we know `code` isn't
+ * reporting a problem.
+ */
+function deriveShipmentStatus(latest: FedExLatestStatusDetail | undefined): ShipmentStatus {
+  if (!latest) return "UNKNOWN";
+  const fromCode = mapFedExStatusCode(latest.code);
+  if (fromCode === "EXCEPTION") return "EXCEPTION";
+  const fromDerived = mapFedExStatusCode(latest.derivedCode);
+  return fromDerived !== "UNKNOWN" ? fromDerived : fromCode;
+}
 
 function formatLocation(location: FedExScanLocation | undefined): string | null {
   if (!location) return null;
@@ -36,7 +55,13 @@ function toScanEvents(result: FedExTrackResult): ScanEvent[] {
       description: e.eventDescription ?? e.exceptionDescription ?? e.derivedStatus ?? "Scan event",
       location: formatLocation(e.scanLocation) ?? "—",
       eventType: e.eventType ?? "",
-      isException: Boolean(e.exceptionCode || e.exceptionDescription),
+      // FedEx populates exceptionCode/exceptionDescription on plenty of routine
+      // scans (e.g. drop-off confirmations at retail locations) that aren't
+      // real problems, so trusting "a code is present" flags normal scans as
+      // exceptions. Each scan also carries its own derived status code from
+      // the same taxonomy as the shipment-level status (DE/DY/SE/CA/RS = a
+      // real exception) — that's a much more reliable signal.
+      isException: mapFedExStatusCode(e.derivedStatusCode ?? e.eventType) === "EXCEPTION",
     }));
   return events.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
@@ -102,7 +127,7 @@ export function normalizeTrackResult(result: FedExTrackResult): TrackingInfo {
   }
 
   const latest = result.latestStatusDetail;
-  const status = mapFedExStatusCode(latest?.derivedCode ?? latest?.code);
+  const status = deriveShipmentStatus(latest);
   const transitHistory = toScanEvents(result);
 
   const origin =

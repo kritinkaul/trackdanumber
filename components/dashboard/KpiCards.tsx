@@ -109,7 +109,7 @@ export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) 
           </p>
           <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
+              className="h-full rounded-full bg-[var(--accent-live)] transition-[width] duration-700 ease-out"
               style={{ width: `${barWidth}%` }}
             />
           </div>

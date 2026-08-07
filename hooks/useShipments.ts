@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import type { ReturnsUploadResponse } from "@/types/return-tracker";
 import type {
   ApiError,
   RefreshResponse,
@@ -55,7 +56,7 @@ export interface OfficeCount {
 }
 
 export type ActionResult =
-  | { ok: true; count: number }
+  | { ok: true; count: number; shipments?: Shipment[]; returns?: ReturnsUploadResponse }
   | { ok: false; message: string };
 
 async function readError(response: Response): Promise<string> {
@@ -91,13 +92,19 @@ export function useShipments() {
         setStatus("error");
         return { ok: false, message };
       }
-      const body: UploadResponse = await response.json();
+      const body: UploadResponse | ReturnsUploadResponse = await response.json();
+      if ("assets" in body) {
+        // A Zero Touch Return Tracker file — hand off to the returns flow
+        // without touching shipment-manifest state.
+        setStatus("idle");
+        return { ok: true, count: body.assets.length, returns: body };
+      }
       setShipments(body.shipments);
       setWarnings(body.warnings);
       setFilters(DEFAULT_FILTERS);
       setSearch("");
       setStatus("ready");
-      return { ok: true, count: body.shipments.length };
+      return { ok: true, count: body.shipments.length, shipments: body.shipments };
     } catch {
       const message = "Upload failed. Check your connection and try again.";
       setError(message);
@@ -148,6 +155,16 @@ export function useShipments() {
     setWarnings([]);
     setSearch("");
     setFilters(DEFAULT_FILTERS);
+  }, []);
+
+  /** Restores a previously recorded session's snapshot without re-uploading. */
+  const loadShipments = useCallback((data: Shipment[]) => {
+    setShipments(data);
+    setError(null);
+    setWarnings([]);
+    setSearch("");
+    setFilters(DEFAULT_FILTERS);
+    setStatus("ready");
   }, []);
 
   const setFilter = useCallback(
@@ -295,5 +312,6 @@ export function useShipments() {
     upload,
     refresh,
     reset,
+    loadShipments,
   };
 }
