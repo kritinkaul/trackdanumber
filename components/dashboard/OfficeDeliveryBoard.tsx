@@ -52,7 +52,7 @@ function byUrgency(a: OfficeDelivery, b: OfficeDelivery): number {
 }
 
 function buildOfficeFilters(office: string, status: ShipmentFilters["status"]): ShipmentFilters {
-  return { status, city: "all", state: "all", carrier: "all", office };
+  return { status, city: "all", state: "all", carrier: "all", office, duplicates: "all" };
 }
 
 export function OfficeDeliveryBoard({ shipments, onSelectShipment }: OfficeDeliveryBoardProps) {

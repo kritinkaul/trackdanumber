@@ -4,6 +4,8 @@ import { useCallback, useRef, useState } from "react";
 import { CheckCircle2, FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ACCEPTED_EXTENSIONS } from "@/lib/excel-parser";
+import { isAcceptedFileName } from "@/lib/upload-file";
 import { cn } from "@/lib/utils";
 
 interface UploadDropzoneProps {
@@ -13,8 +15,6 @@ interface UploadDropzoneProps {
   justSucceeded?: boolean;
 }
 
-const ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
-
 export function UploadDropzone({ onFileSelected, isUploading, justSucceeded }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -23,9 +23,10 @@ export function UploadDropzone({ onFileSelected, isUploading, justSucceeded }: U
   const handleFile = useCallback(
     (file: File | undefined) => {
       if (!file) return;
-      const name = file.name.toLowerCase();
-      if (!ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext))) {
-        setRejected(`"${file.name}" is not a supported file. Upload a .xlsx or .csv file.`);
+      if (!isAcceptedFileName(file.name)) {
+        setRejected(
+          `"${file.name}" is not a supported file. Upload an Excel (.xlsx, .xls) or CSV file.`
+        );
         return;
       }
       setRejected(null);

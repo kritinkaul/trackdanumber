@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Flag, History, Laptop } from "lucide-react";
+import { AlertTriangle, Flag, History, Laptop, Repeat } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/common/CopyButton";
@@ -156,6 +156,28 @@ export function ReturnDetailDrawer({ asset, onClose }: ReturnDetailDrawerProps) 
                     <p className="mt-0.5">{asset.insight.activeTracking.deliveryException}</p>
                   </div>
                 </div>
+              )}
+
+              {[asset.trackingMatch, asset.previousTrackingMatch].map((match, index) =>
+                match && match.candidateCount > 1 ? (
+                  <div
+                    key={index}
+                    className={cn(
+                      "flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm",
+                      match.confidence === "ambiguous"
+                        ? "border-red-300/70 bg-red-50 text-red-900 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200"
+                        : "border-amber-300/70 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                    )}
+                  >
+                    <Repeat className="mt-0.5 size-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">
+                        {index === 0 ? "Current" : "Previous"} label was reused by FedEx
+                      </p>
+                      <p className="mt-0.5 opacity-90">{match.reason}</p>
+                    </div>
+                  </div>
+                ) : null
               )}
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-4">

@@ -1,4 +1,4 @@
-import type { TrackingInfo } from "@/types/shipment";
+import type { CarrierCandidate, CarrierMatch, TrackingInfo } from "@/types/shipment";
 
 /**
  * One asset row parsed from the "Daily View Updated" sheet of the
@@ -36,6 +36,11 @@ export interface ReturnAsset extends ReturnAssetRow {
   tracking: TrackingInfo;
   /** Live carrier data for the previous label (column G), when one exists. */
   previousTracking: TrackingInfo | null;
+  /** How `tracking` was chosen when FedEx has several shipments on the label. */
+  trackingMatch: CarrierMatch;
+  previousTrackingMatch: CarrierMatch | null;
+  /** All FedEx records for the current label; only populated when there is more than one. */
+  carrierCandidates: CarrierCandidate[];
 }
 
 export interface ReturnsUploadResponse {

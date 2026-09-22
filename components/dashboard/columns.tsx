@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/common/CopyButton";
+import { DuplicateBadges } from "@/components/common/DuplicateBadge";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import type { Shipment } from "@/types/shipment";
@@ -44,14 +45,17 @@ export const shipmentColumns: ColumnDef<Shipment>[] = [
     accessorKey: "trackingNumber",
     header: ({ column }) => <SortableHeader label="Tracking Number" column={column} />,
     cell: ({ row }) => (
-      <span className="flex items-center gap-1">
-        <span className="font-mono text-xs">{row.original.trackingNumber}</span>
-        <CopyButton
-          value={row.original.trackingNumber}
-          label="Copy tracking number"
-          className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
-        />
-      </span>
+      <div>
+        <span className="flex items-center gap-1">
+          <span className="font-mono text-xs">{row.original.trackingNumber}</span>
+          <CopyButton
+            value={row.original.trackingNumber}
+            label="Copy tracking number"
+            className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+          />
+        </span>
+        <span className="text-[11px] text-muted-foreground">Sheet row {row.original.rowNumber}</span>
+      </div>
     ),
   },
   {
@@ -84,6 +88,17 @@ export const shipmentColumns: ColumnDef<Shipment>[] = [
         isReturnToShipper={row.original.tracking.isReturnToShipper}
       />
     ),
+  },
+  {
+    id: "duplicate",
+    // Sort order: conflicts and undecided FedEx records first, then other duplicates.
+    accessorFn: (row) =>
+      (row.duplicate?.kind === "CONFLICT" ? 4 : 0) +
+      (row.match.confidence === "ambiguous" ? 3 : 0) +
+      (row.duplicate ? 1 : 0) +
+      (row.match.candidateCount > 1 ? 1 : 0),
+    header: ({ column }) => <SortableHeader label="Duplicate check" column={column} />,
+    cell: ({ row }) => <DuplicateBadges shipment={row.original} />,
   },
   {
     id: "currentLocation",

@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 
-import { cellToString } from "@/lib/excel-parser";
+import { cellToString, parseTrackingCell } from "@/lib/excel-parser";
 import type { ReturnAssetRow } from "@/types/return-tracker";
 
 export interface ParsedReturnTracker {
@@ -82,8 +82,8 @@ function toYes(value: unknown): boolean {
 
 /** Tracking cells occasionally hold notes; only accept digit sequences that look like carrier numbers. */
 function toTrackingNumber(value: unknown): string {
-  const text = cellToString(value).replace(/\s+/g, "");
-  return /^\d{8,34}$/.test(text) ? text : "";
+  const [first] = parseTrackingCell(value).numbers;
+  return first && /^\d{8,34}$/.test(first) ? first : "";
 }
 
 export function parseReturnTracker(workbook: XLSX.WorkBook): ParsedReturnTracker {

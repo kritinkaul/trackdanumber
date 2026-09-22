@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DUPLICATE_FILTER_LABELS, type DuplicateFilter } from "@/lib/duplicates";
 import { STATUS_LABELS } from "@/lib/status";
 import type { ShipmentFilters } from "@/hooks/useShipments";
 import type { ShipmentStatus } from "@/types/shipment";
@@ -43,7 +44,12 @@ interface FilterFormValues {
   state: string;
   carrier: string;
   office: string;
+  duplicates: string;
 }
+
+const DUPLICATE_FILTER_ITEMS = (
+  Object.keys(DUPLICATE_FILTER_LABELS) as Exclude<DuplicateFilter, "all">[]
+).map((value) => ({ value, label: DUPLICATE_FILTER_LABELS[value] }));
 
 export function FilterBar({
   search,
@@ -57,7 +63,7 @@ export function FilterBar({
   // `values` keeps the form in sync when filters change externally
   // (KPI card clicks, destination chips, reset after upload).
   const { control, reset } = useForm<FilterFormValues>({
-    values: { ...filters, office: filters.office },
+    values: { ...filters },
   });
 
   const hasActiveFilters =
@@ -66,7 +72,8 @@ export function FilterBar({
     filters.city !== "all" ||
     filters.state !== "all" ||
     filters.carrier !== "all" ||
-    filters.office !== "all";
+    filters.office !== "all" ||
+    filters.duplicates !== "all";
 
   const activeFilterCount = [
     filters.status !== "all",
@@ -74,6 +81,7 @@ export function FilterBar({
     filters.state !== "all",
     filters.carrier !== "all",
     filters.office !== "all",
+    filters.duplicates !== "all",
   ].filter(Boolean).length;
   const [showFilters, setShowFilters] = useState(false);
 
@@ -84,7 +92,15 @@ export function FilterBar({
     onFilterChange("state", "all");
     onFilterChange("carrier", "all");
     onFilterChange("office", "all");
-    reset({ status: "all", city: "all", state: "all", carrier: "all", office: "all" });
+    onFilterChange("duplicates", "all");
+    reset({
+      status: "all",
+      city: "all",
+      state: "all",
+      carrier: "all",
+      office: "all",
+      duplicates: "all",
+    });
   };
 
   const selectConfigs = [
@@ -121,6 +137,12 @@ export function FilterBar({
       })),
       onChange: (value: string) => onFilterChange("office", value),
     },
+    {
+      name: "duplicates" as const,
+      placeholder: "Duplicate check",
+      items: DUPLICATE_FILTER_ITEMS,
+      onChange: (value: string) => onFilterChange("duplicates", value as DuplicateFilter),
+    },
   ];
 
   return (
@@ -131,7 +153,7 @@ export function FilterBar({
           <Input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search tracking, recipient, office, city, or state"
+            placeholder="Search tracking, recipient, serial, office, city, or state"
             className="h-10 bg-background pl-9"
             aria-label="Search shipments"
           />
@@ -207,7 +229,9 @@ export function FilterBar({
                           ? "All Statuses"
                           : config.placeholder === "Office"
                             ? "All Offices"
-                            : `All ${config.placeholder}s`}
+                            : config.name === "duplicates"
+                              ? "All rows"
+                              : `All ${config.placeholder}s`}
                       </SelectItem>
                       {config.items.map((item) => (
                         <SelectItem key={item.value} value={item.value}>

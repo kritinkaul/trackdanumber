@@ -47,7 +47,11 @@ export interface FedExTimeWindow {
 }
 
 export interface FedExTrackResult {
-  trackingNumberInfo?: { trackingNumber?: string };
+  trackingNumberInfo?: {
+    trackingNumber?: string;
+    trackingNumberUniqueId?: string;
+    carrierCode?: string;
+  };
   error?: { code?: string; message?: string };
   latestStatusDetail?: FedExLatestStatusDetail;
   dateAndTimes?: FedExDateAndTime[];
@@ -55,6 +59,10 @@ export interface FedExTrackResult {
   serviceDetail?: { type?: string; description?: string };
   originLocation?: { locationContactAndAddress?: { address?: FedExScanLocation } };
   shipperInformation?: { address?: FedExScanLocation };
+  recipientInformation?: { address?: FedExScanLocation };
+  destinationLocation?: { locationContactAndAddress?: { address?: FedExScanLocation } };
+  lastUpdatedDestinationAddress?: FedExScanLocation;
+  deliveryDetails?: { actualDeliveryAddress?: FedExScanLocation };
   estimatedDeliveryTimeWindow?: FedExTimeWindow;
   standardTransitTimeWindow?: FedExTimeWindow;
 }

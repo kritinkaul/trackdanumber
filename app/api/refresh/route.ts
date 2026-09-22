@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 import { FedExAuthError } from "@/services/fedex/auth";
 import { trackShipments } from "@/services/fedex/tracking";
-import type { RefreshResponse, TrackingInfo } from "@/types/shipment";
+import { MAX_TRACKING_NUMBERS } from "@/lib/upload-payload";
+import type { CarrierCandidate, RefreshResponse } from "@/types/shipment";
 
 export const runtime = "nodejs";
 // Return-tracker refreshes can carry ~1,000+ labels at single-number
@@ -13,7 +14,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   let trackingNumbers: string[];
   try {
     const body = await request.json();
-    trackingNumbers = Array.isArray(body?.trackingNumbers) ? body.trackingNumbers : [];
+    trackingNumbers = Array.isArray(body?.trackingNumbers)
+      ? body.trackingNumbers.filter((n: unknown): n is string => typeof n === "string" && n !== "")
+      : [];
   } catch {
     trackingNumbers = [];
   }
@@ -24,12 +27,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 400 }
     );
   }
+  if (new Set(trackingNumbers).size > MAX_TRACKING_NUMBERS) {
+    return NextResponse.json(
+      {
+        error: "TOO_MANY_ROWS",
+        message: `Refresh is limited to ${MAX_TRACKING_NUMBERS.toLocaleString()} tracking numbers at a time.`,
+      },
+      { status: 413 }
+    );
+  }
 
   try {
     const trackingMap = await trackShipments(trackingNumbers);
-    const tracking: Record<string, TrackingInfo> = {};
-    trackingMap.forEach((info, num) => {
-      tracking[num] = info;
+    const tracking: Record<string, CarrierCandidate[]> = {};
+    trackingMap.forEach((candidates, num) => {
+      tracking[num] = candidates;
     });
     const body: RefreshResponse = { tracking };
     return NextResponse.json(body);

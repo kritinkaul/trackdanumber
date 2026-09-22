@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleDashed,
+  Copy,
   Package,
   Truck,
   Undo2,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { AnimatedNumber } from "@/components/common/AnimatedNumber";
+import type { DuplicateFilter } from "@/lib/duplicates";
 import { cn } from "@/lib/utils";
 import type { KpiCounts, StatusFilter } from "@/hooks/useShipments";
 
@@ -19,6 +21,7 @@ interface KpiCardsProps {
   kpis: KpiCounts;
   activeStatus: StatusFilter;
   onSelectStatus: (status: StatusFilter) => void;
+  onSelectDuplicates: (filter: DuplicateFilter) => void;
 }
 
 interface KpiDefinition {
@@ -81,7 +84,12 @@ const KPI_DEFINITIONS: KpiDefinition[] = [
   },
 ];
 
-export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) {
+export function KpiCards({
+  kpis,
+  activeStatus,
+  onSelectStatus,
+  onSelectDuplicates,
+}: KpiCardsProps) {
   const known = Math.max(kpis.total - kpis.noStatus, 0);
   const completion = known > 0 ? Math.round((kpis.delivered / known) * 100) : 0;
 
@@ -181,6 +189,34 @@ export function KpiCards({ kpis, activeStatus, onSelectStatus }: KpiCardsProps) 
             <AnimatedNumber value={kpis.noStatus} />
           </button>
         </span>
+        {kpis.duplicates > 0 ? (
+          <>
+            <span aria-hidden className="size-1 rounded-full bg-border" />
+            <Copy className="size-3.5" />
+            <span>
+              Duplicates:{" "}
+              <button
+                type="button"
+                onClick={() => onSelectDuplicates("ANY")}
+                className="font-semibold text-foreground underline-offset-4 hover:underline"
+              >
+                <AnimatedNumber value={kpis.duplicates} />
+              </button>
+            </span>
+            {kpis.needsReview > 0 ? (
+              <span>
+                Needs review:{" "}
+                <button
+                  type="button"
+                  onClick={() => onSelectDuplicates("REVIEW")}
+                  className="font-semibold text-red-700 underline-offset-4 hover:underline dark:text-red-300"
+                >
+                  <AnimatedNumber value={kpis.needsReview} />
+                </button>
+              </span>
+            ) : null}
+          </>
+        ) : null}
       </div>
     </section>
   );

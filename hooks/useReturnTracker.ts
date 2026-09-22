@@ -10,6 +10,7 @@ import {
   type ReturnInsight,
   type ReturnLiveStatus,
 } from "@/lib/return-insights";
+import { assembleReturnAssets } from "@/lib/shipment-assembly";
 import type { ReturnAsset, ReturnsUploadResponse } from "@/types/return-tracker";
 import type { ApiError, RefreshResponse } from "@/types/shipment";
 
@@ -107,15 +108,26 @@ export function useReturnTracker() {
         return { ok: false, message };
       }
       const body: RefreshResponse = await response.json();
-      setAssets((prev) =>
-        prev.map((a) => ({
-          ...a,
-          tracking: body.tracking[a.returnTrackingNumber] ?? a.tracking,
-          previousTracking: a.previousReturnTrackingNumber
-            ? body.tracking[a.previousReturnTrackingNumber] ?? a.previousTracking
-            : a.previousTracking,
-        }))
-      );
+      setAssets((prev) => {
+        const previous = new Map<string, ReturnAsset["carrierCandidates"]>();
+        for (const a of prev) {
+          previous.set(
+            a.returnTrackingNumber,
+            a.carrierCandidates.length > 0
+              ? a.carrierCandidates
+              : [{ uniqueId: a.trackingMatch.selectedId, tracking: a.tracking }]
+          );
+          if (a.previousReturnTrackingNumber && a.previousTracking && a.previousTrackingMatch) {
+            previous.set(a.previousReturnTrackingNumber, [
+              { uniqueId: a.previousTrackingMatch.selectedId, tracking: a.previousTracking },
+            ]);
+          }
+        }
+        return assembleReturnAssets(
+          prev,
+          (n) => body.tracking[n] ?? previous.get(n) ?? []
+        );
+      });
       return { ok: true, count: trackingNumbers.length };
     } catch {
       const message = "Refresh failed. Check your connection and try again.";

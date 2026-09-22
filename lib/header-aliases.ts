@@ -1,7 +1,8 @@
 import type { ExcelShipmentRow } from "@/types/shipment";
 
-// Columns read from the spreadsheet; `office` is derived from deliverTo, not mapped.
-export type ExcelField = Exclude<keyof ExcelShipmentRow, "office">;
+// Columns read from the spreadsheet; `office` is derived from deliverTo and
+// `rowNumber` from the row's position, so neither is mapped from a header.
+export type ExcelField = Exclude<keyof ExcelShipmentRow, "office" | "rowNumber">;
 
 /**
  * Known header name synonyms, compared after normalization
@@ -141,6 +142,37 @@ export const HEADER_ALIASES: Record<ExcelField, string[]> = {
     "product name",
     "description",
   ],
+  postalCode: [
+    // ServiceNow
+    "u ship to zip",
+    "u ship to zip code",
+    "u ship to postal code",
+    // Generic forms
+    "zip",
+    "zip code",
+    "zipcode",
+    "postal code",
+    "postcode",
+    "ship to zip",
+    "ship to zip code",
+    "ship to postal code",
+    "destination zip",
+    "destination postal code",
+    "dest zip",
+  ],
+  shipDate: [
+    // ServiceNow
+    "u ship date",
+    "u shipped date",
+    "u shipped on",
+    // Generic forms
+    "ship date",
+    "shipped date",
+    "shipped on",
+    "date shipped",
+    "shipment date",
+    "pickup date",
+  ],
 };
 
 export const REQUIRED_FIELD: ExcelField = "trackingNumber";
@@ -155,14 +187,19 @@ export const FIELD_LABELS: Record<ExcelField, string> = {
   serialNumber: "Serial Number",
   assetName: "Asset Name",
   recipient: "Recipient",
+  postalCode: "ZIP Code",
+  shipDate: "Ship Date",
 };
 
 /**
  * Optional columns that shouldn't produce a "column not found" warning —
- * many daily sheets won't include asset details or a separate recipient.
+ * many daily sheets won't include asset details, a separate recipient, a
+ * ZIP or a ship date (they only sharpen duplicate matching when present).
  */
 export const SILENT_OPTIONAL_FIELDS: ReadonlySet<ExcelField> = new Set([
   "serialNumber",
   "assetName",
   "recipient",
+  "postalCode",
+  "shipDate",
 ]);

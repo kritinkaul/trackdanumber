@@ -3,9 +3,14 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { matchesDuplicateFilter, needsReview, type DuplicateFilter } from "@/lib/duplicates";
+import { ExcelParseError } from "@/lib/excel-parser";
+import { assembleShipments } from "@/lib/shipment-assembly";
+import { parseUploadFile } from "@/lib/upload-file";
 import type { ReturnsUploadResponse } from "@/types/return-tracker";
 import type {
   ApiError,
+  CarrierCandidate,
   RefreshResponse,
   Shipment,
   ShipmentStatus,
@@ -23,6 +28,7 @@ export interface ShipmentFilters {
   state: string | "all";
   carrier: string | "all";
   office: string | "all";
+  duplicates: DuplicateFilter;
 }
 
 const DEFAULT_FILTERS: ShipmentFilters = {
@@ -31,6 +37,7 @@ const DEFAULT_FILTERS: ShipmentFilters = {
   state: "all",
   carrier: "all",
   office: "all",
+  duplicates: "all",
 };
 
 export interface KpiCounts {
@@ -43,6 +50,10 @@ export interface KpiCounts {
   noStatus: number;
   /** Anywhere in the return flow — heading back or already returned to the shipper. */
   returning: number;
+  /** Rows sharing a tracking number with another row, or with several FedEx records. */
+  duplicates: number;
+  /** Duplicates a person has to resolve (conflicting rows, undecidable FedEx records). */
+  needsReview: number;
 }
 
 export interface DestinationCount {
@@ -60,12 +71,22 @@ export type ActionResult =
   | { ok: false; message: string };
 
 async function readError(response: Response): Promise<string> {
+  if (response.status === 413) {
+    return "The upload is too large for the server. Split the file into smaller parts and upload them separately.";
+  }
   try {
     const body: ApiError = await response.json();
     return body.message ?? "Request failed.";
   } catch {
     return `Request failed (HTTP ${response.status}).`;
   }
+}
+
+/** The records a shipment was built from, so it can be re-assembled without refetching. */
+function knownCandidates(shipment: Shipment): CarrierCandidate[] {
+  return shipment.carrierCandidates.length > 0
+    ? shipment.carrierCandidates
+    : [{ uniqueId: shipment.match.selectedId, tracking: shipment.tracking }];
 }
 
 export function useShipments() {
@@ -75,6 +96,8 @@ export function useShipments() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<ShipmentFilters>(DEFAULT_FILTERS);
+  /** Shipment id → FedEx record a person explicitly chose; survives refreshes. */
+  const [pins, setPins] = useState<ReadonlyMap<string, string>>(new Map());
 
   const debouncedSearch = useDebouncedValue(search);
 
@@ -83,9 +106,21 @@ export function useShipments() {
     setError(null);
     setWarnings([]);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/upload", { method: "POST", body: formData });
+      let parsed;
+      try {
+        parsed = await parseUploadFile(file);
+      } catch (err) {
+        const message =
+          err instanceof ExcelParseError ? err.message : "The file could not be read.";
+        setError(message);
+        setStatus("error");
+        return { ok: false, message };
+      }
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      });
       if (!response.ok) {
         const message = await readError(response);
         setError(message);
@@ -100,6 +135,7 @@ export function useShipments() {
         return { ok: true, count: body.assets.length, returns: body };
       }
       setShipments(body.shipments);
+      setPins(new Map());
       setWarnings(body.warnings);
       setFilters(DEFAULT_FILTERS);
       setSearch("");
@@ -131,13 +167,14 @@ export function useShipments() {
         return { ok: false, message };
       }
       const body: RefreshResponse = await response.json();
-      setShipments((prev) =>
-        prev.map((s) =>
-          body.tracking[s.trackingNumber]
-            ? { ...s, tracking: body.tracking[s.trackingNumber] }
-            : s
-        )
-      );
+      setShipments((prev) => {
+        const previous = new Map(prev.map((s) => [s.trackingNumber, knownCandidates(s)]));
+        return assembleShipments(
+          prev,
+          (trackingNumber) => body.tracking[trackingNumber] ?? previous.get(trackingNumber) ?? [],
+          pins
+        );
+      });
       setStatus("ready");
       return { ok: true, count: trackingNumbers.length };
     } catch {
@@ -146,10 +183,30 @@ export function useShipments() {
       setStatus("ready");
       return { ok: false, message };
     }
-  }, [shipments]);
+  }, [shipments, pins]);
+
+  /**
+   * Pins the FedEx record a person identified as ours (or clears the pin
+   * with null). Every row sharing the number is re-evaluated, since the
+   * duplicate check depends on which record each row points at.
+   */
+  const selectCarrierRecord = useCallback(
+    (shipmentId: string, uniqueId: string | null) => {
+      const nextPins = new Map(pins);
+      if (uniqueId) nextPins.set(shipmentId, uniqueId);
+      else nextPins.delete(shipmentId);
+      setPins(nextPins);
+      setShipments((prev) => {
+        const candidates = new Map(prev.map((s) => [s.trackingNumber, knownCandidates(s)]));
+        return assembleShipments(prev, (n) => candidates.get(n) ?? [], nextPins);
+      });
+    },
+    [pins]
+  );
 
   const reset = useCallback(() => {
     setShipments([]);
+    setPins(new Map());
     setStatus("idle");
     setError(null);
     setWarnings([]);
@@ -160,6 +217,7 @@ export function useShipments() {
   /** Restores a previously recorded session's snapshot without re-uploading. */
   const loadShipments = useCallback((data: Shipment[]) => {
     setShipments(data);
+    setPins(new Map());
     setError(null);
     setWarnings([]);
     setSearch("");
@@ -184,9 +242,13 @@ export function useShipments() {
       labelCreated: 0,
       noStatus: 0,
       returning: 0,
+      duplicates: 0,
+      needsReview: 0,
     };
     for (const s of shipments) {
       if (s.tracking.isReturnToShipper) counts.returning += 1;
+      if (matchesDuplicateFilter(s, "ANY")) counts.duplicates += 1;
+      if (needsReview(s)) counts.needsReview += 1;
       switch (s.tracking.status) {
         case "DELIVERED":
           // A return that has completed still reports status DELIVERED — keep it
@@ -283,6 +345,7 @@ export function useShipments() {
       if (filters.state !== "all" && s.state.trim() !== filters.state) return false;
       if (filters.carrier !== "all" && s.carrier.trim() !== filters.carrier) return false;
       if (filters.office !== "all" && s.office !== filters.office) return false;
+      if (!matchesDuplicateFilter(s, filters.duplicates)) return false;
       if (!query) return true;
       return (
         s.trackingNumber.toLowerCase().includes(query) ||
@@ -290,6 +353,7 @@ export function useShipments() {
         s.state.toLowerCase().includes(query) ||
         s.deliverTo.toLowerCase().includes(query) ||
         s.recipient.toLowerCase().includes(query) ||
+        s.serialNumber.toLowerCase().includes(query) ||
         (s.office?.toLowerCase().includes(query) ?? false)
       );
     });
@@ -313,5 +377,6 @@ export function useShipments() {
     refresh,
     reset,
     loadShipments,
+    selectCarrierRecord,
   };
 }

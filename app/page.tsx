@@ -54,11 +54,15 @@ export default function DashboardPage() {
     upload,
     refresh,
     reset,
+    selectCarrierRecord,
   } = useShipments();
 
   const returnTracker = useReturnTracker();
 
-  const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+  // Track the id, not the object, so the drawer reflects re-matching after a refresh or manual pick.
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+  const selectedShipment = shipments.find((s) => s.id === selectedShipmentId) ?? null;
+  const selectShipment = (shipment: Shipment) => setSelectedShipmentId(shipment.id);
   const [justUploaded, setJustUploaded] = useState(false);
   const { toast } = useToast();
 
@@ -288,10 +292,16 @@ export default function DashboardPage() {
               kpis={kpis}
               activeStatus={filters.status}
               onSelectStatus={(shipmentStatus) => setFilter("status", shipmentStatus)}
+              onSelectDuplicates={(duplicateFilter) => {
+                setFilter("duplicates", duplicateFilter);
+                document
+                  .getElementById("shipment-registry-title")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
             />
 
             <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
-              <OfficeDeliveryBoard shipments={shipments} onSelectShipment={setSelectedShipment} />
+              <OfficeDeliveryBoard shipments={shipments} onSelectShipment={selectShipment} />
               <DestinationSummary
                 destinations={destinations}
                 activeCity={filters.city}
@@ -320,7 +330,7 @@ export default function DashboardPage() {
                 onExport={() => handleExport(filteredShipments)}
                 exportCount={filteredShipments.length}
               />
-              <ShipmentTable shipments={filteredShipments} onRowClick={setSelectedShipment} />
+              <ShipmentTable shipments={filteredShipments} onRowClick={selectShipment} />
             </section>
           </>
         )}
@@ -328,7 +338,10 @@ export default function DashboardPage() {
 
       <ShipmentDetailDrawer
         shipment={selectedShipment}
-        onClose={() => setSelectedShipment(null)}
+        allShipments={shipments}
+        onClose={() => setSelectedShipmentId(null)}
+        onSelectShipment={selectShipment}
+        onSelectCarrierRecord={selectCarrierRecord}
       />
     </div>
   );

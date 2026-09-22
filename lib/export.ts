@@ -1,7 +1,12 @@
 import { STATUS_LABELS } from "@/lib/status";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import type { ShipmentFilters } from "@/hooks/useShipments";
-import type { Shipment } from "@/types/shipment";
+import type {
+  CarrierFit,
+  DuplicateKind,
+  MatchConfidence,
+  Shipment,
+} from "@/types/shipment";
 
 /** Escapes a value for CSV (quotes, commas, newlines) and guards against formula injection. */
 function csvCell(value: string): string {
@@ -13,8 +18,45 @@ function csvCell(value: string): string {
   return guarded;
 }
 
+const DUPLICATE_EXPORT_LABELS: Record<DuplicateKind, string> = {
+  EXACT: "Identical rows",
+  SAME_DESTINATION: "Same destination",
+  CONFLICT: "Conflict",
+};
+
+const CARRIER_FIT_EXPORT_LABELS: Record<CarrierFit, string> = {
+  match: "Matches",
+  mismatch: "Does not match",
+  unknown: "Unknown",
+};
+
+const MATCH_EXPORT_LABELS: Record<MatchConfidence, string> = {
+  single: "",
+  matched: "Matched by destination",
+  likely: "Likely match",
+  ambiguous: "Needs review",
+  manual: "Picked manually",
+};
+
 const EXPORT_COLUMNS: { header: string; value: (s: Shipment) => string }[] = [
+  { header: "Sheet Row", value: (s) => String(s.rowNumber) },
   { header: "Tracking Number", value: (s) => s.trackingNumber },
+  {
+    header: "Duplicate Check",
+    value: (s) => (s.duplicate ? DUPLICATE_EXPORT_LABELS[s.duplicate.kind] : ""),
+  },
+  { header: "Duplicate Of Rows", value: (s) => s.duplicate?.otherRows.join(", ") ?? "" },
+  {
+    header: "Matches FedEx Destination",
+    value: (s) => (s.duplicate ? CARRIER_FIT_EXPORT_LABELS[s.duplicate.carrierFit] : ""),
+  },
+  { header: "Duplicate Note", value: (s) => s.duplicate?.note ?? "" },
+  {
+    header: "FedEx Records On Number",
+    value: (s) => (s.match.candidateCount > 1 ? String(s.match.candidateCount) : ""),
+  },
+  { header: "FedEx Record Match", value: (s) => MATCH_EXPORT_LABELS[s.match.confidence] },
+  { header: "FedEx Match Note", value: (s) => s.match.reason },
   { header: "Deliver To", value: (s) => s.deliverTo },
   { header: "Recipient", value: (s) => s.recipient },
   { header: "Status", value: (s) => STATUS_LABELS[s.tracking.status] },
@@ -22,6 +64,19 @@ const EXPORT_COLUMNS: { header: string; value: (s: Shipment) => string }[] = [
   { header: "City", value: (s) => s.city },
   { header: "State", value: (s) => s.state },
   { header: "Address", value: (s) => s.address },
+  { header: "ZIP Code", value: (s) => s.postalCode },
+  {
+    header: "FedEx Destination",
+    value: (s) =>
+      s.tracking.destination
+        ? [
+            [s.tracking.destination.city, s.tracking.destination.state].filter(Boolean).join(", "),
+            s.tracking.destination.postalCode,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        : "",
+  },
   { header: "Office", value: (s) => s.office ?? "" },
   { header: "Carrier", value: (s) => s.carrier },
   { header: "Service", value: (s) => s.tracking.serviceType ?? "" },

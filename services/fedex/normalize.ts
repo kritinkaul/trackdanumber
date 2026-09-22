@@ -1,5 +1,11 @@
 import { mapFedExStatusCode, STATUS_LABELS } from "@/lib/status";
-import type { ScanEvent, ShipmentStatus, TrackingInfo } from "@/types/shipment";
+import type {
+  CarrierCandidate,
+  CarrierDestination,
+  ScanEvent,
+  ShipmentStatus,
+  TrackingInfo,
+} from "@/types/shipment";
 import type {
   FedExLatestStatusDetail,
   FedExScanLocation,
@@ -116,8 +122,38 @@ export function unavailableTracking(errorMessage: string): TrackingInfo {
     deliveryException: null,
     isReturnToShipper: false,
     returnTrackingNumber: null,
+    destination: null,
+    shipDate: null,
     errorMessage,
   };
+}
+
+function toDestination(location: FedExScanLocation | undefined): CarrierDestination | null {
+  if (!location) return null;
+  const city = location.city?.trim() || null;
+  const state = location.stateOrProvinceCode?.trim() || null;
+  const postalCode = location.postalCode?.trim() || null;
+  return city || state || postalCode ? { city, state, postalCode } : null;
+}
+
+/**
+ * Best available "where is this going" for a record. The actual delivery
+ * address wins; the delivery scan location is a last resort because for a
+ * delivered package it is the destination city.
+ */
+function pickDestination(result: FedExTrackResult, status: ShipmentStatus): CarrierDestination | null {
+  return (
+    toDestination(result.deliveryDetails?.actualDeliveryAddress) ??
+    toDestination(result.recipientInformation?.address) ??
+    toDestination(result.lastUpdatedDestinationAddress) ??
+    toDestination(result.destinationLocation?.locationContactAndAddress?.address) ??
+    (status === "DELIVERED" ? toDestination(result.latestStatusDetail?.scanLocation) : null)
+  );
+}
+
+function pickShipDate(result: FedExTrackResult): string | null {
+  const byType = (type: string) => result.dateAndTimes?.find((d) => d.type === type)?.dateTime;
+  return byType("SHIP") ?? byType("ACTUAL_PICKUP") ?? byType("ACTUAL_TENDER") ?? null;
 }
 
 /** Converts one raw FedEx trackResult into the app's TrackingInfo shape. */
@@ -192,6 +228,31 @@ export function normalizeTrackResult(result: FedExTrackResult): TrackingInfo {
     deliveryException,
     isReturnToShipper,
     returnTrackingNumber,
+    destination: pickDestination(result, status),
+    shipDate: pickShipDate(result),
     ...(transitHistory.length > 0 ? { transitHistory } : {}),
   };
 }
+
+/** Converts every trackResult FedEx returned for one number into candidates. */
+export function toCarrierCandidates(
+  trackingNumber: string,
+  results: FedExTrackResult[]
+): CarrierCandidate[] {
+  const seen = new Set<string>();
+  return results.map((result, index) => {
+    let uniqueId =
+      result.trackingNumberInfo?.trackingNumberUniqueId || `${trackingNumber}#${index + 1}`;
+    if (seen.has(uniqueId)) uniqueId = `${uniqueId}#${index + 1}`;
+    seen.add(uniqueId);
+    return { uniqueId, tracking: normalizeTrackResult(result) };
+  });
+}
+
+export function unavailableCandidates(
+  trackingNumber: string,
+  errorMessage: string
+): CarrierCandidate[] {
+  return [{ uniqueId: `${trackingNumber}#1`, tracking: unavailableTracking(errorMessage) }];
+}
+

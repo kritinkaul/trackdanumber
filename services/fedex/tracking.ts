@@ -1,10 +1,7 @@
 import { getAccessToken, getFedExBaseUrl } from "@/services/fedex/auth";
-import {
-  normalizeTrackResult,
-  unavailableTracking,
-} from "@/services/fedex/normalize";
+import { toCarrierCandidates, unavailableCandidates } from "@/services/fedex/normalize";
 import type { FedExTrackResponse } from "@/services/fedex/types";
-import type { TrackingInfo } from "@/types/shipment";
+import type { CarrierCandidate } from "@/types/shipment";
 
 /**
  * Max concurrent FedEx Track API calls.
@@ -23,10 +20,7 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-async function trackOne(
-  trackingNumber: string,
-  token: string
-): Promise<TrackingInfo> {
+async function trackOne(trackingNumber: string, token: string): Promise<CarrierCandidate[]> {
   let response: Response;
   try {
     response = await fetch(`${getFedExBaseUrl()}/track/v1/trackingnumbers`, {
@@ -43,7 +37,8 @@ async function trackOne(
       cache: "no-store",
     });
   } catch (err) {
-    return unavailableTracking(
+    return unavailableCandidates(
+      trackingNumber,
       err instanceof Error ? err.message : "Network error reaching FedEx."
     );
   }
@@ -56,25 +51,28 @@ async function trackOne(
     } catch {
       // keep default
     }
-    return unavailableTracking(message);
+    return unavailableCandidates(trackingNumber, message);
   }
 
   let body: FedExTrackResponse;
   try {
     body = await response.json();
   } catch {
-    return unavailableTracking("Invalid response from FedEx.");
+    return unavailableCandidates(trackingNumber, "Invalid response from FedEx.");
   }
 
-  // The API returns completeTrackResults[0].trackResults[0] for a single number.
-  const trackResult =
-    body.output?.completeTrackResults?.[0]?.trackResults?.[0];
+  // A recycled tracking number comes back as several trackResults — one per
+  // shipment that has ever used it. Keep all of them so the caller can pick
+  // the one that belongs to the spreadsheet row.
+  const trackResults = (body.output?.completeTrackResults ?? []).flatMap(
+    (complete) => complete.trackResults ?? []
+  );
 
-  if (!trackResult) {
-    return unavailableTracking("No tracking data returned for this number.");
+  if (trackResults.length === 0) {
+    return unavailableCandidates(trackingNumber, "No tracking data returned for this number.");
   }
 
-  return normalizeTrackResult(trackResult);
+  return toCarrierCandidates(trackingNumber, trackResults);
 }
 
 /**
@@ -84,21 +82,20 @@ async function trackOne(
  */
 export async function trackShipments(
   trackingNumbers: string[]
-): Promise<Map<string, TrackingInfo>> {
+): Promise<Map<string, CarrierCandidate[]>> {
   const unique = Array.from(new Set(trackingNumbers.filter(Boolean)));
   const token = await getAccessToken();
-  const results = new Map<string, TrackingInfo>();
+  const results = new Map<string, CarrierCandidate[]>();
 
   for (const batch of chunk(unique, MAX_CONCURRENT)) {
-    const settled = await Promise.allSettled(
-      batch.map((num) => trackOne(num, token))
-    );
+    const settled = await Promise.allSettled(batch.map((num) => trackOne(num, token)));
     settled.forEach((outcome, i) => {
       results.set(
         batch[i],
         outcome.status === "fulfilled"
           ? outcome.value
-          : unavailableTracking(
+          : unavailableCandidates(
+              batch[i],
               outcome.reason instanceof Error
                 ? outcome.reason.message
                 : "FedEx tracking request failed."
