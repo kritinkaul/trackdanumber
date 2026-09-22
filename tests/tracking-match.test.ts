@@ -45,6 +45,37 @@ describe("selectCandidate for a recycled tracking number", () => {
     expect(match.candidateCount).toBe(2);
   });
 
+  it("records a per-record score breakdown explaining the pick", () => {
+    const candidates = toCarrierCandidates(TN, [
+      emptyResult("A~873696428611~FX"),
+      deliveredResult({
+        uniqueId: "B~873696428611~FX",
+        city: "Houston",
+        state: "TX",
+        postalCode: "77002",
+        shipDate: "2026-09-15T10:00:00Z",
+        deliveredAt: "2026-09-17T15:00:00Z",
+      }),
+    ]);
+
+    const { match } = selectCandidate(candidates, {
+      city: "Houston",
+      state: "TX",
+      postalCode: "77002",
+      shipDate: "",
+    });
+    expect(match.confidence).toBe("matched");
+    expect(match.rule).toMatch(/destination matches/);
+    expect(match.evaluations.map((e) => e.uniqueId)).toEqual([
+      "B~873696428611~FX",
+      "A~873696428611~FX",
+    ]);
+    const [best, other] = match.evaluations;
+    expect(best.signals.map((s) => s.points)).toEqual(expect.arrayContaining([100, 30, 40]));
+    expect(best.score).toBe(best.signals.reduce((sum, s) => sum + s.points, 0));
+    expect(other.signals.some((s) => s.points === -25)).toBe(true);
+  });
+
   it("uses the sheet destination to prove which record is ours", () => {
     const candidates = toCarrierCandidates(TN, [
       deliveredResult({

@@ -63,12 +63,30 @@ export interface CarrierCandidate {
  */
 export type MatchConfidence = "single" | "matched" | "likely" | "ambiguous" | "manual";
 
+/** One check that raised or lowered a record's match score. */
+export interface MatchSignal {
+  label: string;
+  points: number;
+}
+
+/** How one carrier record scored against the spreadsheet row. */
+export interface CandidateEvaluation {
+  uniqueId: string;
+  score: number;
+  destinationFit: CarrierFit;
+  signals: MatchSignal[];
+}
+
 export interface CarrierMatch {
   selectedId: string;
   confidence: MatchConfidence;
   /** Human-readable explanation of why this record was chosen. */
   reason: string;
+  /** The decision rule that applied, in plain language. */
+  rule: string;
   candidateCount: number;
+  /** Score breakdown per record, highest first; empty when there was only one record. */
+  evaluations: CandidateEvaluation[];
 }
 
 /**

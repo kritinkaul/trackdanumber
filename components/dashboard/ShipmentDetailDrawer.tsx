@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Copy, Laptop, Layers, Repeat, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Copy, Laptop, Layers, Repeat, Undo2 } from "lucide-react";
 
 import { CopyButton } from "@/components/common/CopyButton";
 import {
   DUPLICATE_KIND_LABELS,
   MATCH_CONFIDENCE_LABELS,
 } from "@/components/common/DuplicateBadge";
+import { SelectionLogic, formatCarrierDestination } from "@/components/dashboard/SelectionLogic";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -20,7 +21,6 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import type {
   CarrierCandidate,
-  CarrierDestination,
   CarrierFit,
   DuplicateKind,
   Shipment,
@@ -34,6 +34,8 @@ interface ShipmentDetailDrawerProps {
   onSelectShipment: (shipment: Shipment) => void;
   /** Pins the FedEx record that belongs to this row (null returns to automatic matching). */
   onSelectCarrierRecord: (shipmentId: string, uniqueId: string | null) => void;
+  /** Set when the drawer was opened from the duplicate review panel. */
+  onBackToReview?: () => void;
 }
 
 const DUPLICATE_PANEL_CLASSES: Record<DuplicateKind, string> = {
@@ -55,12 +57,6 @@ const FIT_LABELS: Record<CarrierFit, string> = {
   mismatch: "doesn't match FedEx destination",
   unknown: "FedEx destination unknown",
 };
-
-function formatCarrierDestination(destination: CarrierDestination | null): string {
-  if (!destination) return "";
-  const place = [destination.city, destination.state].filter(Boolean).join(", ");
-  return [place, destination.postalCode].filter(Boolean).join(" ");
-}
 
 function sheetDestination(shipment: Shipment): string {
   return (
@@ -133,6 +129,7 @@ export function ShipmentDetailDrawer({
   onClose,
   onSelectShipment,
   onSelectCarrierRecord,
+  onBackToReview,
 }: ShipmentDetailDrawerProps) {
   const tracking = shipment?.tracking;
   const duplicate = shipment?.duplicate ?? null;
@@ -152,6 +149,16 @@ export function ShipmentDetailDrawer({
         {shipment && tracking && (
           <>
             <SheetHeader>
+              {onBackToReview && (
+                <button
+                  type="button"
+                  onClick={onBackToReview}
+                  className="mb-1 flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="size-3.5" />
+                  Back to duplicate review
+                </button>
+              )}
               <SheetTitle className="flex items-center gap-1.5 font-mono text-base">
                 {shipment.trackingNumber}
                 <CopyButton
@@ -222,6 +229,10 @@ export function ShipmentDetailDrawer({
                 </div>
               )}
 
+              {(duplicate || shipment.carrierCandidates.length > 1) && (
+                <SelectionLogic shipment={shipment} />
+              )}
+
               {shipment.carrierCandidates.length > 1 && (
                 <div
                   className={cn(
@@ -237,7 +248,9 @@ export function ShipmentDetailDrawer({
                       <p className="font-medium">
                         FedEx reused this number · {MATCH_CONFIDENCE_LABELS[shipment.match.confidence]}
                       </p>
-                      <p className="mt-0.5 text-muted-foreground">{shipment.match.reason}</p>
+                      <p className="mt-0.5 text-muted-foreground">
+                        Pick a different record if the one shown isn&apos;t ours.
+                      </p>
                     </div>
                   </div>
                   <ul className="mt-2.5 space-y-2">

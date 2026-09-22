@@ -1,9 +1,11 @@
 import { STATUS_LABELS } from "@/lib/status";
 import type {
+  CandidateEvaluation,
   CarrierCandidate,
   CarrierDestination,
   CarrierFit,
   CarrierMatch,
+  MatchSignal,
   TrackingInfo,
 } from "@/types/shipment";
 
@@ -89,6 +91,8 @@ export interface DestinationComparison {
   notes: string[];
   /** Evidence against this record. */
   concerns: string[];
+  /** Every check that moved the score, for the "why this record" breakdown. */
+  signals: MatchSignal[];
 }
 
 function formatDestination(destination: CarrierDestination): string {
@@ -105,10 +109,19 @@ export function compareDestination(
   context: MatchContext,
   destination: CarrierDestination | null
 ): DestinationComparison {
-  if (!destination) return { fit: "unknown", score: 0, notes: [], concerns: [] };
+  if (!destination) {
+    return {
+      fit: "unknown",
+      score: 0,
+      notes: [],
+      concerns: [],
+      signals: [{ label: "FedEx gives no destination for this record", points: 0 }],
+    };
+  }
 
   const notes: string[] = [];
   const concerns: string[] = [];
+  const signals: MatchSignal[] = [];
   let score = 0;
 
   const sheetZip = normalizePostalCode(context.postalCode);
@@ -127,28 +140,37 @@ export function compareDestination(
   if (zip === "match") {
     score += 100;
     notes.push("ZIP matches the sheet");
+    signals.push({ label: `ZIP ${carrierZip} matches the sheet`, points: 100 });
   } else if (zip === "mismatch") {
     score -= 80;
     concerns.push(`has ZIP ${destination.postalCode}, not the sheet's ${context.postalCode}`);
+    signals.push({ label: `ZIP ${carrierZip} ≠ sheet ZIP ${sheetZip}`, points: -80 });
   }
   if (state === "match") {
     score += 30;
+    signals.push({ label: `State ${carrierState} matches the sheet`, points: 30 });
   } else if (state === "mismatch") {
     score -= 60;
     concerns.push(`is going to ${formatDestination(destination)}, not ${context.state}`);
+    signals.push({ label: `State ${carrierState} ≠ sheet state ${sheetState}`, points: -60 });
   }
   if (city === "match") {
     score += 40;
     if (zip !== "match") notes.push(`destination ${formatDestination(destination)} matches the sheet`);
+    signals.push({ label: `City ${destination.city} matches the sheet`, points: 40 });
   } else if (city === "mismatch") {
     score -= 15;
+    signals.push({ label: `City ${destination.city} ≠ sheet city ${context.city}`, points: -15 });
+  }
+  if (zip === null && state === null && city === null) {
+    signals.push({ label: "Sheet has no destination to compare with", points: 0 });
   }
 
   let fit: CarrierFit = "unknown";
   if (zip === "mismatch" || state === "mismatch") fit = "mismatch";
   else if (zip === "match" || city === "match") fit = "match";
 
-  return { fit, score, notes, concerns };
+  return { fit, score, notes, concerns, signals };
 }
 
 function toTime(iso: string | null | undefined): number | null {
@@ -181,6 +203,7 @@ interface ScoredCandidate {
   destination: DestinationComparison;
   notes: string[];
   concerns: string[];
+  signals: MatchSignal[];
 }
 
 function scoreCandidates(
@@ -195,6 +218,7 @@ function scoreCandidates(
     const destination = compareDestination(context, candidate.tracking.destination);
     const notes = [...destination.notes];
     const concerns = [...destination.concerns];
+    const signals = [...destination.signals];
     let score = destination.score;
 
     const carrierShipTime = toTime(candidate.tracking.shipDate);
@@ -203,9 +227,14 @@ function scoreCandidates(
       if (days <= 7) {
         score += 60;
         notes.push("ship date matches the sheet");
+        signals.push({ label: "Ship date within 7 days of the sheet's", points: 60 });
       } else if (days > 30) {
         score -= 40;
         concerns.push(`shipped ${formatMonthYear(carrierShipTime)}, not around the sheet's ship date`);
+        signals.push({
+          label: `Shipped ${formatMonthYear(carrierShipTime)}, over 30 days from the sheet's ship date`,
+          points: -40,
+        });
       }
     }
 
@@ -213,16 +242,22 @@ function scoreCandidates(
     if (time !== null && Number.isFinite(newest) && (newest - time) / DAY_MS > STALE_GAP_DAYS) {
       score -= 30;
       concerns.push(`is an older use of this number (last activity ${formatMonthYear(time)})`);
+      signals.push({
+        label: `Older use of the number — last activity ${formatMonthYear(time)}, over ${STALE_GAP_DAYS} days before the newest record`,
+        points: -30,
+      });
     } else if (time !== null && time === newest) {
       score += 5;
+      signals.push({ label: "Most recent activity of all records", points: 5 });
     }
 
     if (isEmptyRecord(candidate.tracking)) {
       score -= 25;
       concerns.push("has no FedEx scans");
+      signals.push({ label: "No FedEx scans or status on this record", points: -25 });
     }
 
-    return { candidate, score, destination, notes, concerns };
+    return { candidate, score, destination, notes, concerns, signals };
   });
 }
 
@@ -234,6 +269,15 @@ function describe(candidate: CarrierCandidate): string {
       ? "no-status"
       : STATUS_LABELS[tracking.status].toLowerCase();
   return place ? `${status} record for ${place}` : `${status} record`;
+}
+
+function toEvaluations(scored: ScoredCandidate[]): CandidateEvaluation[] {
+  return scored.map((s) => ({
+    uniqueId: s.candidate.uniqueId,
+    score: s.score,
+    destinationFit: s.destination.fit,
+    signals: s.signals,
+  }));
 }
 
 export interface SelectionResult {
@@ -261,11 +305,20 @@ export function selectCandidate(
     const [only] = candidates;
     return {
       candidate: only,
-      match: { selectedId: only.uniqueId, confidence: "single", reason: "", candidateCount: 1 },
+      match: {
+        selectedId: only.uniqueId,
+        confidence: "single",
+        reason: "",
+        rule: "FedEx has only one shipment on this number, so there was nothing to choose between.",
+        candidateCount: 1,
+        evaluations: [],
+      },
     };
   }
 
   const count = candidates.length;
+  const scored = scoreCandidates(candidates, context).sort((a, b) => b.score - a.score);
+  const evaluations = toEvaluations(scored);
   const pinned = pinnedId ? candidates.find((c) => c.uniqueId === pinnedId) : undefined;
   if (pinned) {
     return {
@@ -274,12 +327,13 @@ export function selectCandidate(
         selectedId: pinned.uniqueId,
         confidence: "manual",
         reason: `FedEx has ${count} shipments on this number. You chose the ${describe(pinned)}.`,
+        rule: "A person picked this record with “This is ours”, which overrides the automatic scores.",
         candidateCount: count,
+        evaluations,
       },
     };
   }
 
-  const scored = scoreCandidates(candidates, context).sort((a, b) => b.score - a.score);
   const [best, second] = scored;
   const margin = best.score - second.score;
   const prefix = `FedEx has ${count} shipments on this number.`;
@@ -300,7 +354,9 @@ export function selectCandidate(
         selectedId: best.candidate.uniqueId,
         confidence: "matched",
         reason: `${prefix} Showing the ${describe(best.candidate)}${why}.`,
+        rule: "Only this record's FedEx destination matches the sheet's destination, so it is ours.",
         candidateCount: count,
+        evaluations,
       },
     };
   }
@@ -317,7 +373,11 @@ export function selectCandidate(
             ? "The other records go to a different destination than this row, so they aren't ours."
             : "Picked on recency and data quality rather than destination, so confirm if it matters."
         }`,
+        rule: ruledOutByDestination
+          ? `Every other record's destination contradicts the sheet, and this record scored ${margin} points higher than the next one.`
+          : `No destination separates the records, but this one scored ${margin} points higher than the next (a lead of 20+ points counts as a likely match).`,
         candidateCount: count,
+        evaluations,
       },
     };
   }
@@ -328,7 +388,9 @@ export function selectCandidate(
       selectedId: best.candidate.uniqueId,
       confidence: "ambiguous",
       reason: `${prefix} They can't be told apart from the sheet's data — review them and pick the one that is ours.`,
+      rule: `The top two records are only ${margin} point${margin === 1 ? "" : "s"} apart (under the 20-point threshold), so this is just the best guess — pick the right one manually.`,
       candidateCount: count,
+      evaluations,
     },
   };
 }

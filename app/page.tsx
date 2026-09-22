@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Activity, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react";
+import { Activity, Copy, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AnimatedNumber } from "@/components/common/AnimatedNumber";
@@ -11,6 +11,8 @@ import { DashboardSkeleton } from "@/components/common/TableSkeleton";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
 import { useToast } from "@/components/common/Toast";
 import { DestinationSummary } from "@/components/dashboard/DestinationSummary";
+import { DuplicateReviewBanner } from "@/components/dashboard/DuplicateReviewBanner";
+import { DuplicateReviewSheet } from "@/components/dashboard/DuplicateReviewSheet";
 import { OfficeDeliveryBoard } from "@/components/dashboard/OfficeDeliveryBoard";
 import { FilterBar } from "@/components/dashboard/FilterBar";
 import { KpiCards } from "@/components/dashboard/KpiCards";
@@ -19,6 +21,7 @@ import { ShipmentDetailDrawer } from "@/components/dashboard/ShipmentDetailDrawe
 import { ShipmentTable } from "@/components/dashboard/ShipmentTable";
 import { ReturnsDashboard } from "@/components/returns/ReturnsDashboard";
 import { UploadDropzone } from "@/components/upload/UploadDropzone";
+import { matchesDuplicateFilter } from "@/lib/duplicates";
 import { downloadShipmentsCsv } from "@/lib/export";
 import { useReturnTracker } from "@/hooks/useReturnTracker";
 import { useShipments } from "@/hooks/useShipments";
@@ -63,6 +66,22 @@ export default function DashboardPage() {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const selectedShipment = shipments.find((s) => s.id === selectedShipmentId) ?? null;
   const selectShipment = (shipment: Shipment) => setSelectedShipmentId(shipment.id);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [openedFromReview, setOpenedFromReview] = useState(false);
+  const duplicateCount = shipments.filter((s) => matchesDuplicateFilter(s, "ANY")).length;
+  const openFromReview = (shipment: Shipment) => {
+    setReviewOpen(false);
+    setOpenedFromReview(true);
+    setSelectedShipmentId(shipment.id);
+  };
+  const closeDrawer = () => {
+    setSelectedShipmentId(null);
+    setOpenedFromReview(false);
+  };
+  const backToReview = () => {
+    closeDrawer();
+    setReviewOpen(true);
+  };
   const [justUploaded, setJustUploaded] = useState(false);
   const { toast } = useToast();
 
@@ -154,6 +173,15 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             {hasData || hasReturns ? (
               <>
+                {duplicateCount > 0 && !hasReturns ? (
+                  <Button variant="outline" onClick={() => setReviewOpen(true)}>
+                    <Copy className="size-4" />
+                    <span className="hidden sm:inline">Duplicates</span>
+                    <span className="rounded-full bg-amber-500/15 px-1.5 text-xs font-semibold text-amber-800 tabular-nums dark:text-amber-300">
+                      {duplicateCount}
+                    </span>
+                  </Button>
+                ) : null}
                 <RefreshButton
                   onRefresh={hasReturns ? handleReturnsRefresh : handleRefresh}
                   isRefreshing={hasReturns ? returnTracker.isRefreshing : status === "refreshing"}
@@ -300,6 +328,8 @@ export default function DashboardPage() {
               }}
             />
 
+            <DuplicateReviewBanner shipments={shipments} onOpen={() => setReviewOpen(true)} />
+
             <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
               <OfficeDeliveryBoard shipments={shipments} onSelectShipment={selectShipment} />
               <DestinationSummary
@@ -339,9 +369,17 @@ export default function DashboardPage() {
       <ShipmentDetailDrawer
         shipment={selectedShipment}
         allShipments={shipments}
-        onClose={() => setSelectedShipmentId(null)}
+        onClose={closeDrawer}
         onSelectShipment={selectShipment}
         onSelectCarrierRecord={selectCarrierRecord}
+        onBackToReview={openedFromReview ? backToReview : undefined}
+      />
+
+      <DuplicateReviewSheet
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        shipments={shipments}
+        onOpenShipment={openFromReview}
       />
     </div>
   );
