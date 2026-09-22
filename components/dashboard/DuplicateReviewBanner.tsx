@@ -35,7 +35,8 @@ export function DuplicateReviewBanner({
           {review > 0 ? (
             <span className="text-red-700 dark:text-red-300">
               {" "}
-              · <AnimatedNumber value={review} /> need{review === 1 ? "s" : ""} review
+              · <AnimatedNumber value={review} /> row{review === 1 ? "" : "s"} need
+              {review === 1 ? "s" : ""} review
             </span>
           ) : null}
         </p>
