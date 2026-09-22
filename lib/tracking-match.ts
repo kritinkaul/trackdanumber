@@ -306,12 +306,17 @@ export function selectCandidate(
   }
 
   if (margin >= 20) {
+    const ruledOutByDestination = scored.slice(1).every((s) => s.destination.fit === "mismatch");
     return {
       candidate: best.candidate,
       match: {
         selectedId: best.candidate.uniqueId,
         confidence: "likely",
-        reason: `${prefix} Showing the ${describe(best.candidate)}${why}. Picked on recency and data quality rather than destination, so confirm if it matters.`,
+        reason: `${prefix} Showing the ${describe(best.candidate)}${why}. ${
+          ruledOutByDestination
+            ? "The other records go to a different destination than this row, so they aren't ours."
+            : "Picked on recency and data quality rather than destination, so confirm if it matters."
+        }`,
         candidateCount: count,
       },
     };

@@ -142,16 +142,26 @@ interface SheetRows {
   firstRow: number;
 }
 
-function readSheetRows(workbook: XLSX.WorkBook, sheetName: string): SheetRows | null {
+/** Rows read per sheet while looking for the header (enough to confirm data sits under it). */
+const HEADER_PROBE_ROWS = 200;
+
+function readSheetRows(
+  workbook: XLSX.WorkBook,
+  sheetName: string,
+  maxRows?: number
+): SheetRows | null {
   const sheet = workbook.Sheets[sheetName];
   if (!sheet || !sheet["!ref"]) return null;
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  if (maxRows !== undefined) range.e.r = Math.min(range.e.r, range.s.r + maxRows - 1);
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     defval: "",
     raw: true,
     blankrows: true,
+    range,
   });
-  return { sheetName, rows, firstRow: XLSX.utils.decode_range(sheet["!ref"]).s.r };
+  return { sheetName, rows, firstRow: range.s.r };
 }
 
 interface HeaderMatch {
@@ -174,7 +184,7 @@ function isHiddenSheet(workbook: XLSX.WorkBook, index: number): boolean {
 function findHeader(workbook: XLSX.WorkBook): HeaderMatch | null {
   let best: (HeaderMatch & { score: number }) | null = null;
   workbook.SheetNames.forEach((sheetName, sheetIndex) => {
-    const sheet = readSheetRows(workbook, sheetName);
+    const sheet = readSheetRows(workbook, sheetName, HEADER_PROBE_ROWS);
     if (!sheet) return;
     const visibilityBonus = isHiddenSheet(workbook, sheetIndex) ? 0 : 0.5;
     const limit = Math.min(sheet.rows.length, HEADER_SCAN_ROWS);
@@ -282,7 +292,7 @@ export function parseSpreadsheetWorkbook(workbook: XLSX.WorkBook): ParsedSpreads
 
   const header = findHeader(workbook);
   if (!header) {
-    const first = readSheetRows(workbook, workbook.SheetNames[0]);
+    const first = readSheetRows(workbook, workbook.SheetNames[0], 1);
     const found = first?.rows[0]?.map((c) => cellToString(c)).filter(Boolean) ?? [];
     throw new ExcelParseError(
       found.length > 0
@@ -291,7 +301,8 @@ export function parseSpreadsheetWorkbook(workbook: XLSX.WorkBook): ParsedSpreads
     );
   }
 
-  const { sheet, headerIndex, mapping } = header;
+  const { headerIndex, mapping } = header;
+  const sheet = readSheetRows(workbook, header.sheet.sheetName) ?? header.sheet;
   const warnings: string[] = [];
   if (workbook.SheetNames.length > 1) {
     warnings.push(`Read shipments from sheet "${sheet.sheetName}".`);
@@ -359,7 +370,7 @@ export function parseSpreadsheetWorkbook(workbook: XLSX.WorkBook): ParsedSpreads
   }
   if (multiRows.length > 0) {
     warnings.push(
-      `Row${multiRows.length === 1 ? "" : "s"} ${listRows(multiRows)} list more than one tracking number; each number is tracked as its own shipment.`
+      `Row${multiRows.length === 1 ? "" : "s"} ${listRows(multiRows)} list${multiRows.length === 1 ? "s" : ""} more than one tracking number; each number is tracked as its own shipment.`
     );
   }
   if (rows.length === 0) {

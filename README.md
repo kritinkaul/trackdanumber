@@ -52,11 +52,32 @@ Columns are detected by header name — no manual mapping. Recognized headers
 | State | "State", "ST", "Destination State" |
 | Address | "Address", "Street Address", "Address Line 1" |
 | Carrier | "Carrier", "Shipper", "Ship Via" |
+| ZIP Code (optional) | "Zip", "Zip Code", "Postal Code", "Ship To Zip" |
+| Ship Date (optional) | "Ship Date", "Shipped Date", "Date Shipped" |
 
 Only the Tracking Number column is required; missing optional columns produce a
 warning and blank values. Rows without a tracking number are skipped. The
 spreadsheet is the source of truth for destination info — FedEx data never
 overwrites it.
+
+The file is parsed in the browser (only the extracted rows are sent to the
+server), so large workbooks aren't cut off by request-size limits. The header
+row can sit below title rows and on any sheet. Tracking cells are cleaned
+(apostrophes, spaces, dashes, several numbers in one cell); numbers Excel has
+turned into scientific notation are skipped with a warning naming the rows.
+
+## Duplicate tracking numbers
+
+- **FedEx reused the number.** FedEx recycles tracking numbers, so one number
+  can return several shipments (e.g. one delivered and one with no updates).
+  Every record is kept and the one matching the row is chosen by ZIP, city /
+  state (the A&M office location counts), ship date, recency and whether it has
+  scans. The drawer lists all records with the reason; "This is ours" pins one.
+- **Same number on several rows.** Rows are labelled *Identical rows*,
+  *Same destination* (several items in one box) or *Conflict* (different
+  people / places). For conflicts, FedEx's destination shows which row it
+  actually matches. Use the **Duplicate check** filter or the KPI footer links
+  ("Needs review") to work through them; the CSV export includes these columns.
 
 ## Features
 

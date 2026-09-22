@@ -145,7 +145,9 @@ export function summarizeDuplicates(shipments: Shipment[]): string[] {
   if (reused > 0) {
     messages.push(
       `FedEx returned more than one shipment for ${reused} tracking number${reused === 1 ? "" : "s"} (FedEx reuses numbers). The matching record was picked by destination, ship date and recency${
-        unresolved > 0 ? `; ${unresolved} couldn't be decided and need a manual pick` : ""
+        unresolved > 0
+          ? `; ${unresolved} couldn't be decided and need${unresolved === 1 ? "s" : ""} a manual pick`
+          : ""
       }.`
     );
   }
