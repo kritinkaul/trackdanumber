@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 
-import { readWorkbook } from "@/lib/excel-parser";
+import { ExcelParseError, readWorkbook } from "@/lib/excel-parser";
 import { deriveReturnInsight } from "@/lib/return-insights";
 import { isReturnTrackerWorkbook, parseReturnTracker } from "@/lib/return-tracker-parser";
 import { unavailableTracking } from "@/services/fedex/normalize";
@@ -164,6 +164,49 @@ describe("Zero Touch Return Tracker v4", () => {
       legalHold: true,
       refreshNumber: "RITM1",
     });
+  });
+});
+
+describe("files changed on a coworker's machine", () => {
+  const scientific = (row: string[]) =>
+    row.map((value, col) =>
+      (col === 3 || col === 4) && /^\d{12}$/.test(value) ? Number(value).toExponential(5).toUpperCase() : value
+    );
+
+  it("explains that an Excel re-save destroyed the tracking numbers", () => {
+    const csv = toCsv([V4_HEADERS, ...V4_ROWS.map(scientific)]);
+    const workbook = readWorkbook(windows1252(csv), "tracker.csv");
+    expect(isReturnTrackerWorkbook(workbook)).toBe(true);
+    expect(() => parseReturnTracker(workbook)).toThrow(ExcelParseError);
+    expect(() => parseReturnTracker(workbook)).toThrow(/8\.70613E\+11.*opened in Excel and saved again/);
+  });
+
+  it("keeps readable rows and warns about the rounded ones", () => {
+    const csv = toCsv([V4_HEADERS, V4_ROWS[0], scientific(V4_ROWS[1]), V4_ROWS[2]]);
+    const { rows, warnings } = parseReturnTracker(readWorkbook(windows1252(csv), "tracker.csv"));
+    expect(rows.map((r) => r.serialNumber)).toEqual(["PF4R5J33", "C2L40706MV"]);
+    expect(warnings[0]).toMatch(/^1 asset skipped: .*scientific notation/);
+  });
+
+  it("uses the sheet with the data when an emptied copy of the tracker comes first", () => {
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([V4_HEADERS]), "Template");
+    XLSX.utils.book_append_sheet(
+      book,
+      XLSX.utils.aoa_to_sheet([["Title"], [], ["Legend"], V4_HEADERS, ...V4_ROWS]),
+      "Daily View"
+    );
+    const buffer = XLSX.write(book, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+    const parsed = parseReturnTracker(readWorkbook(buffer, "tracker.xlsx"));
+    expect(parsed.sheetName).toBe("Daily View");
+    expect(parsed.rows).toHaveLength(3);
+  });
+
+  it("names the sheet and column when no row has a tracking number", () => {
+    const csv = toCsv([V4_HEADERS, ...V4_ROWS.map((row) => row.map((v, c) => (c === 3 || c === 4 ? "" : v)))]);
+    expect(() => parseReturnTracker(readWorkbook(windows1252(csv), "t.csv"))).toThrow(
+      /None of the 4 assets .*"Return Tracking Number" \(column D\)/
+    );
   });
 });
 

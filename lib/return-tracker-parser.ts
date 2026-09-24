@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 
-import { cellToString, parseTrackingCell } from "@/lib/excel-parser";
+import { ExcelParseError, cellToString, parseTrackingCell } from "@/lib/excel-parser";
 import type { ReturnAssetRow } from "@/types/return-tracker";
 
 export interface ParsedReturnTracker {
@@ -19,8 +19,8 @@ export interface ParsedReturnTracker {
 const SIGNATURE_HEADERS = ["serial number", "return tracking number", "status"] as const;
 const STATUS_HEADERS = ["status", "status override"];
 
-/** How many leading rows of each sheet to scan for the header row (the tracker has a title/legend row above it). */
-const HEADER_SCAN_ROWS = 10;
+/** How many leading rows of each sheet to scan for the header row (the tracker has title/legend rows above it). */
+const HEADER_SCAN_ROWS = 30;
 
 function normalizeHeader(value: unknown): string {
   return String(value ?? "")
@@ -62,26 +62,44 @@ interface SheetMatch {
   sheetName: string;
   headerRowIndex: number;
   headerIndex: Map<string, number>;
+  rows: unknown[][];
+  assetCount: number;
 }
 
+function readRows(sheet: XLSX.WorkSheet): unknown[][] {
+  return XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: "",
+    raw: true,
+    blankrows: true,
+  });
+}
+
+/**
+ * Finds the tracker sheet. Copies of the workbook often carry extra sheets
+ * with the same headers (an archive tab, an emptied template), so when several
+ * sheets match, the one with the most asset rows wins rather than the first.
+ */
 function findReturnTrackerSheet(workbook: XLSX.WorkBook): SheetMatch | null {
+  let best: SheetMatch | null = null;
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      defval: "",
-      raw: true,
-      range: 0,
-    });
+    const rows = readRows(sheet);
     for (let i = 0; i < Math.min(rows.length, HEADER_SCAN_ROWS); i++) {
       const headerIndex = buildHeaderIndex(rows[i].map(normalizeHeader));
-      if (isSignatureRow(headerIndex)) {
-        return { sheetName, headerRowIndex: i, headerIndex };
+      if (!isSignatureRow(headerIndex)) continue;
+      const serialCol = headerIndex.get("serial number") ?? -1;
+      const assetCount = rows
+        .slice(i + 1)
+        .filter((row) => cellToString(row[serialCol])).length;
+      if (!best || assetCount > best.assetCount) {
+        best = { sheetName, headerRowIndex: i, headerIndex, rows, assetCount };
       }
+      break;
     }
   }
-  return null;
+  return best;
 }
 
 /** True when the uploaded workbook is a Zero Touch Return Tracker export. */
@@ -111,11 +129,28 @@ function cleanStatus(value: string): string {
   return value.replace(/^[^\p{L}\p{N}]+/u, "").trim();
 }
 
-/** Tracking cells occasionally hold notes; only accept digit sequences that look like carrier numbers. */
-function toTrackingNumber(value: unknown): string {
-  const [first] = parseTrackingCell(value).numbers;
-  return first && /^\d{8,34}$/.test(first) ? first : "";
+interface TrackingRead {
+  number: string;
+  /** Excel re-saved the number as "8.70613E+11"; the real digits are gone. */
+  scientific: boolean;
 }
+
+/** Tracking cells occasionally hold notes; only accept digit sequences that look like carrier numbers. */
+function readTrackingNumber(value: unknown): TrackingRead {
+  const parsed = parseTrackingCell(value);
+  const [first] = parsed.numbers;
+  return {
+    number: first && /^\d{8,34}$/.test(first) ? first : "",
+    scientific: parsed.issue === "SCIENTIFIC",
+  };
+}
+
+function plural(count: number, word: string): string {
+  return `${count.toLocaleString()} ${word}${count === 1 ? "" : "s"}`;
+}
+
+const SCIENTIFIC_FIX =
+  "This happens when the CSV is opened in Excel and saved again. Upload the original file (the .xlsx, or the CSV exactly as it was exported) without re-saving it. If it must be edited in Excel, first select the tracking number columns and choose Format Cells → Number with 0 decimal places, then save.";
 
 export function parseReturnTracker(workbook: XLSX.WorkBook): ParsedReturnTracker {
   const match = findReturnTrackerSheet(workbook);
@@ -124,13 +159,7 @@ export function parseReturnTracker(workbook: XLSX.WorkBook): ParsedReturnTracker
     throw new Error("Workbook is not a Zero Touch Return Tracker export.");
   }
 
-  const sheet = workbook.Sheets[match.sheetName];
-  const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: "",
-    raw: true,
-  });
-
+  const rawRows = match.rows;
   const col = (header: string) => match.headerIndex.get(header) ?? -1;
   const cell = (row: unknown[], header: string): unknown => {
     const index = col(header);
@@ -146,19 +175,23 @@ export function parseReturnTracker(workbook: XLSX.WorkBook): ParsedReturnTracker
   }
 
   const rows: ReturnAssetRow[] = [];
+  let assetCount = 0;
   let skippedNoTracking = 0;
+  let skippedScientific = 0;
 
   for (const raw of rawRows.slice(match.headerRowIndex + 1)) {
     const serialNumber = text(raw, "serial number");
     if (!serialNumber) {
       continue; // trailing blank/format rows aren't data
     }
-    const returnTrackingNumber = toTrackingNumber(cell(raw, "return tracking number"));
-    const previousReturnTrackingNumber = toTrackingNumber(
-      cell(raw, "previous return tracking number")
-    );
+    assetCount += 1;
+    const current = readTrackingNumber(cell(raw, "return tracking number"));
+    const previous = readTrackingNumber(cell(raw, "previous return tracking number"));
+    const returnTrackingNumber = current.number;
+    const previousReturnTrackingNumber = previous.number;
     if (!returnTrackingNumber && !previousReturnTrackingNumber) {
-      skippedNoTracking += 1;
+      if (current.scientific || previous.scientific) skippedScientific += 1;
+      else skippedNoTracking += 1;
       continue;
     }
 
@@ -187,9 +220,33 @@ export function parseReturnTracker(workbook: XLSX.WorkBook): ParsedReturnTracker
     });
   }
 
+  const trackingColumn = col("return tracking number");
+  const columnName = `"Return Tracking Number" (column ${XLSX.utils.encode_col(trackingColumn)})`;
+
+  if (rows.length === 0) {
+    if (skippedScientific > 0) {
+      throw new ExcelParseError(
+        `The return tracking numbers in this file were saved as rounded numbers like "8.70613E+11", so their real digits are lost and they can't be tracked. ${SCIENTIFIC_FIX}`
+      );
+    }
+    if (assetCount === 0) {
+      throw new ExcelParseError(
+        `Found the return tracker's headers on sheet "${match.sheetName}" (row ${match.headerRowIndex + 1}), but no asset rows with a serial number below them.`
+      );
+    }
+    throw new ExcelParseError(
+      `None of the ${plural(assetCount, "asset")} on sheet "${match.sheetName}" has a readable tracking number in ${columnName}. Check that the column holds the FedEx tracking numbers.`
+    );
+  }
+
+  if (skippedScientific > 0) {
+    warnings.push(
+      `${plural(skippedScientific, "asset")} skipped: the return tracking number was saved in scientific notation (e.g. 8.70613E+11), so its digits are lost. ${SCIENTIFIC_FIX}`
+    );
+  }
   if (skippedNoTracking > 0) {
     warnings.push(
-      `${skippedNoTracking} asset${skippedNoTracking === 1 ? "" : "s"} skipped (no readable return tracking number).`
+      `${plural(skippedNoTracking, "asset")} skipped (no readable return tracking number).`
     );
   }
 
