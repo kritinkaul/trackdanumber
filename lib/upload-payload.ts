@@ -72,6 +72,7 @@ export function sanitizeReturnRows(input: unknown): ReturnAssetRow[] {
         lenovoDefect: row.lenovoDefect === true,
         exception: str(row.exception),
         notes: str(row.notes),
+        nextAction: str(row.nextAction),
         batch: str(row.batch),
       },
     ];

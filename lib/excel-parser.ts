@@ -112,12 +112,73 @@ export function cellToString(value: unknown): string {
  * ZIP codes stay exactly as typed instead of being coerced to numbers
  * (which drops leading zeros and rounds anything over 15 digits).
  */
+/** Windows-1252 characters for bytes 0x80–0x9F (curly quotes, dashes, €, …); "" where undefined. */
+const WINDOWS_1252_C1 = [
+  "\u20ac",
+  "",
+  "\u201a",
+  "\u0192",
+  "\u201e",
+  "\u2026",
+  "\u2020",
+  "\u2021",
+  "\u02c6",
+  "\u2030",
+  "\u0160",
+  "\u2039",
+  "\u0152",
+  "",
+  "\u017d",
+  "",
+  "",
+  "\u2018",
+  "\u2019",
+  "\u201c",
+  "\u201d",
+  "\u2022",
+  "\u2013",
+  "\u2014",
+  "\u02dc",
+  "\u2122",
+  "\u0161",
+  "\u203a",
+  "\u0153",
+  "",
+  "\u017e",
+  "\u0178"
+];
+
+/**
+ * Decodes a text export. Excel's "CSV" save uses the Windows-1252 code page,
+ * not UTF-8, so characters like "–" in "Delivered – Closeout Pending" would
+ * otherwise turn into control characters. UTF-16 (Excel's "Unicode Text") is
+ * left to SheetJS, which detects it from the byte-order mark.
+ */
+function decodeText(bytes: Uint8Array): string | null {
+  if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff)) {
+    return null;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    // Node's "windows-1252" decoder is really Latin-1, so map 0x80–0x9F explicitly.
+    return new TextDecoder("latin1")
+      .decode(bytes)
+      .replace(/[\u0080-\u009f]/g, (char) => WINDOWS_1252_C1[char.charCodeAt(0) - 0x80] || char);
+  }
+}
+
 export function readWorkbook(buffer: ArrayBuffer, fileName = ""): XLSX.WorkBook {
   if (buffer.byteLength === 0) {
     throw new ExcelParseError("The uploaded file is empty.");
   }
   try {
-    return XLSX.read(new Uint8Array(buffer), {
+    const bytes = new Uint8Array(buffer);
+    if (TEXT_EXTENSIONS.test(fileName)) {
+      const text = decodeText(bytes);
+      if (text !== null) return XLSX.read(text, { type: "string", cellDates: true, raw: true });
+    }
+    return XLSX.read(bytes, {
       type: "array",
       cellDates: true,
       raw: TEXT_EXTENSIONS.test(fileName),

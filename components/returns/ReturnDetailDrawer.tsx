@@ -196,6 +196,13 @@ export function ReturnDetailDrawer({ asset, onClose }: ReturnDetailDrawerProps) 
                 {asset.exception && <DetailField label="Sheet Exception" value={asset.exception} />}
               </dl>
 
+              {asset.nextAction && (
+                <div className="rounded-xl border border-amber-300/70 bg-amber-50 px-3 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <h3 className="text-xs font-medium text-amber-900 dark:text-amber-200">Next Action</h3>
+                  <p className="mt-1 whitespace-pre-line text-sm">{asset.nextAction}</p>
+                </div>
+              )}
+
               {asset.notes && (
                 <div className="rounded-xl border bg-muted/40 px-3 py-3">
                   <h3 className="text-xs font-medium text-muted-foreground">Notes</h3>

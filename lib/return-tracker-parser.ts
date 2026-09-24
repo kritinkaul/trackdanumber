@@ -13,9 +13,11 @@ export interface ParsedReturnTracker {
  * Headers that identify a sheet as the Zero Touch Return Tracker's daily
  * view. All three must appear in the same row for a positive match, so the
  * regular shipment manifest (which has "Tracking Number", not "Return
- * Tracking Number") can never be misdetected.
+ * Tracking Number") can never be misdetected. Status matches either the
+ * original "Status" column or v4's "Status (auto)" / "Status Override".
  */
 const SIGNATURE_HEADERS = ["serial number", "return tracking number", "status"] as const;
+const STATUS_HEADERS = ["status", "status override"];
 
 /** How many leading rows of each sheet to scan for the header row (the tracker has a title/legend row above it). */
 const HEADER_SCAN_ROWS = 10;
@@ -26,6 +28,34 @@ function normalizeHeader(value: unknown): string {
     .replace(/[^a-z0-9#\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * v4 of the tracker renamed columns without changing their meaning:
+ * "Status" became "Status (auto)", and columns that are no longer maintained
+ * daily moved to the end with a "Parked:" prefix ("Parked: Legal Hold?").
+ * Both spellings resolve to the same key.
+ */
+function canonicalHeader(normalized: string): string {
+  return normalized.replace(/^parked /, "").replace(/ auto$/, "");
+}
+
+function buildHeaderIndex(normalized: string[]): Map<string, number> {
+  const headerIndex = new Map<string, number>();
+  normalized.forEach((header, col) => {
+    if (header && !headerIndex.has(header)) headerIndex.set(header, col);
+  });
+  normalized.forEach((header, col) => {
+    const canonical = canonicalHeader(header);
+    if (canonical && !headerIndex.has(canonical)) headerIndex.set(canonical, col);
+  });
+  return headerIndex;
+}
+
+function isSignatureRow(headerIndex: Map<string, number>): boolean {
+  return SIGNATURE_HEADERS.every((h) =>
+    h === "status" ? STATUS_HEADERS.some((s) => headerIndex.has(s)) : headerIndex.has(h)
+  );
 }
 
 interface SheetMatch {
@@ -45,12 +75,8 @@ function findReturnTrackerSheet(workbook: XLSX.WorkBook): SheetMatch | null {
       range: 0,
     });
     for (let i = 0; i < Math.min(rows.length, HEADER_SCAN_ROWS); i++) {
-      const normalized = rows[i].map(normalizeHeader);
-      if (SIGNATURE_HEADERS.every((h) => normalized.includes(h))) {
-        const headerIndex = new Map<string, number>();
-        normalized.forEach((header, col) => {
-          if (header && !headerIndex.has(header)) headerIndex.set(header, col);
-        });
+      const headerIndex = buildHeaderIndex(rows[i].map(normalizeHeader));
+      if (isSignatureRow(headerIndex)) {
         return { sheetName, headerRowIndex: i, headerIndex };
       }
     }
@@ -78,6 +104,11 @@ function excelDateToIso(value: unknown): string | null {
 function toYes(value: unknown): boolean {
   const text = cellToString(value).toLowerCase();
   return text === "yes" || text === "true" || value === true;
+}
+
+/** Drops decoration the sheet puts before a status, e.g. the warning emoji in "⚠ Add Actual Return Destination". */
+function cleanStatus(value: string): string {
+  return value.replace(/^[^\p{L}\p{N}]+/u, "").trim();
 }
 
 /** Tracking cells occasionally hold notes; only accept digit sequences that look like carrier numbers. */
@@ -143,7 +174,7 @@ export function parseReturnTracker(workbook: XLSX.WorkBook): ParsedReturnTracker
         returnTrackingNumber && previousReturnTrackingNumber
           ? previousReturnTrackingNumber
           : null,
-      sheetStatus: text(raw, "status"),
+      sheetStatus: cleanStatus(text(raw, "status") || text(raw, "status override")),
       sheetDeliveredDate: excelDateToIso(cell(raw, "return delivered date")),
       routingDestination: text(raw, "routing destination"),
       actualReturnDestination: text(raw, "actual return destination"),
@@ -151,6 +182,7 @@ export function parseReturnTracker(workbook: XLSX.WorkBook): ParsedReturnTracker
       lenovoDefect: toYes(cell(raw, "lenovo defect")),
       exception: text(raw, "exception"),
       notes: text(raw, "notes"),
+      nextAction: text(raw, "next action"),
       batch: text(raw, "batch"),
     });
   }

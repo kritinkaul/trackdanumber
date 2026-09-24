@@ -48,6 +48,8 @@ const EXPORT_COLUMNS: { header: string; value: (a: ReturnAssetWithInsight) => st
   { header: "Lenovo Defect", value: (a) => (a.lenovoDefect ? "Yes" : "No") },
   { header: "Sheet Exception", value: (a) => a.exception },
   { header: "Batch", value: (a) => a.batch },
+  { header: "Next Action", value: (a) => a.nextAction },
+  { header: "Notes", value: (a) => a.notes },
 ];
 
 function slug(value: string): string {

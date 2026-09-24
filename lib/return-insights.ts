@@ -128,15 +128,24 @@ function toLiveStatus(tracking: TrackingInfo): ReturnLiveStatus {
  * checking for the word "awaiting" (which missed statuses like "Return In
  * Transit" — a real sheet value that isn't "awaiting" but also isn't done).
  */
-export type SheetBucket = "AWAITING" | "IN_TRANSIT" | "COMPLETE" | "FLAGGED" | "UNKNOWN";
+export type SheetBucket =
+  | "AWAITING"
+  | "IN_TRANSIT"
+  | "CLOSEOUT"
+  | "COMPLETE"
+  | "FLAGGED"
+  | "UNKNOWN";
 
 function classifySheetStatus(sheetStatus: string): SheetBucket {
   const text = sheetStatus.trim();
   if (!text) return "UNKNOWN";
   if (/complete/i.test(text)) return "COMPLETE";
-  // The sheet's own "Needs Verification" / "Exception" statuses mean a
-  // coordinator is already on it — don't re-flag those as a new problem.
-  if (/verification|exception/i.test(text)) return "FLAGGED";
+  // v4's "Delivered – Closeout Pending": the asset is back, paperwork isn't done.
+  if (/delivered|closeout/i.test(text)) return "CLOSEOUT";
+  // The sheet's own "Needs Verification" / "Exception" / "Action Required" /
+  // "Add Actual Return Destination" statuses mean a coordinator is already
+  // on it — don't re-flag those as a new problem.
+  if (/verification|exception|action required|^add /i.test(text)) return "FLAGGED";
   if (/transit/i.test(text)) return "IN_TRANSIT";
   if (/awaiting/i.test(text)) return "AWAITING";
   return "UNKNOWN";
@@ -165,14 +174,15 @@ export function deriveReturnInsight(asset: ReturnAsset): ReturnInsight {
   // FedEx purges scan history on older labels, and ITAM/FS hand-offs never
   // use the label at all — so a sheet-completed return with a silent label is
   // a finished return, not one still awaiting drop-off.
-  if (sheetBucket === "COMPLETE" && (live === "AWAITING_DROPOFF" || live === "NO_DATA")) {
+  const sheetSaysReturned = sheetBucket === "COMPLETE" || sheetBucket === "CLOSEOUT";
+  if (sheetSaysReturned && (live === "AWAITING_DROPOFF" || live === "NO_DATA")) {
     live = "DELIVERED";
   }
 
   let attentionType: AttentionType | null = null;
   let attention: string | null = null;
 
-  if (sheetBucket === "COMPLETE") {
+  if (sheetSaysReturned) {
     // Only an active contradiction flags a completed row — coordinators may
     // have closed it out via a manual channel (email confirmation, in-person
     // hand-off) the label never reflects, so anything short of a real
@@ -183,6 +193,9 @@ export function deriveReturnInsight(asset: ReturnAsset): ReturnInsight {
     } else if (live === "IN_TRANSIT") {
       attentionType = "SHEET_SAYS_DONE";
       attention = `Sheet says "${asset.sheetStatus}", but the carrier still shows this label in transit. Worth verifying.`;
+    } else if (sheetBucket === "CLOSEOUT") {
+      attentionType = "READY_TO_COMPLETE";
+      attention = `Return delivered — sheet says "${asset.sheetStatus}". Finish the closeout to mark it complete.`;
     }
   } else if (live === "DELIVERED") {
     // Covers every not-yet-complete sheet bucket — awaiting, in transit,
@@ -212,6 +225,7 @@ export function deriveReturnInsight(asset: ReturnAsset): ReturnInsight {
 }
 
 const SHEET_BUCKET_CLASSES: Record<SheetBucket, string> = {
+  CLOSEOUT: "bg-teal-500/10 text-teal-700 border-teal-500/25 dark:text-teal-300",
   COMPLETE: "bg-emerald-500/10 text-emerald-700 border-emerald-500/25 dark:text-emerald-300",
   IN_TRANSIT: "bg-blue-500/10 text-blue-700 border-blue-500/25 dark:text-blue-300",
   FLAGGED: "bg-red-500/10 text-red-700 border-red-500/25 dark:text-red-300",

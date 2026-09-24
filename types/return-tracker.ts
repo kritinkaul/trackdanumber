@@ -26,6 +26,8 @@ export interface ReturnAssetRow {
   lenovoDefect: boolean;
   exception: string;
   notes: string;
+  /** Coordinator's follow-up from the "Next Action" column (tracker v4+). */
+  nextAction: string;
   batch: string;
 }
 
